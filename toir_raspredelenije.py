@@ -3,6 +3,8 @@ import shutil
 from pathlib import Path
 import sys
 from datetime import datetime
+from itertools import chain
+import json
 
 # Настройка UTF-8 вывода в Windows-консоли
 try:
@@ -16,28 +18,38 @@ except Exception:
 # Используйте r"..." для путей в Windows, чтобы избежать проблем с \
 
 # 1. Папка, где лежат исходные проекты для обработки (внутри которой папки с отчетами)
-INBOX_DIR = Path(r"D:\Code_and_Scripts_local\_TEST_for\toir_raspredelenije_test2_cel\00_Inbox")
+INBOX_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\00_Inbox")
 
 # 2. Папка для копирования PDF-файлов (примечания)
-NOTES_DIR = Path(r"D:\Code_and_Scripts_local\_TEST_for\toir_raspredelenije_test2_cel\03_Notes")
+NOTES_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\03_Notes")
 
 # 3. Папка для копирования PDF-файлов (трансмиттал)
-TRA_GST_DIR = Path(r"D:\Code_and_Scripts_local\_TEST_for\toir_raspredelenije_test2_cel\04_TRA_GST")
+TRA_GST_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\04_TRA_GST")
 
 # 4. Корневая папка для создаваемой структуры (Год/Месяц/Part/pdf и Native)
-DEST_ROOT_DIR = Path(r"D:\Code_and_Scripts_local\_TEST_for\toir_raspredelenije_test2_cel")
+DEST_ROOT_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel")
 
 # 5. Временная папка для создания архивов (может совпадать с DEST_ROOT_DIR)
-TEMP_ARCHIVE_DIR = Path(r"D:\Code_and_Scripts_local\_TEST_for\toir_raspredelenije_test2_cel")
+TEMP_ARCHIVE_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel")
 
 # === НАСТРОЙКИ ЛОГИКИ ===
 
-# Регулярное выражение для разбора имени файла
-# Извлекает part (LP или CS), object_name и date (ггггммдд)
+# Регулярное выражение для разбора имени файла на основе предоставленной схемы
 RE_FILENAME = re.compile(
-    r"^CT-(?:DR|CL)-B-(?P<part>LP|CS)-(?P<object_name>[A-Z0-9]+)-.*?(?P<date>\d{8})-\d{2}_All\.pdf$",
-    re.IGNORECASE
+    r"""^CT-
+    (?P<type>CL|DR)-
+    (?P<scope>[A-Z0-9]+)-
+    (?P<part>CS|LP)-
+    (?P<object_name>[A-Z0-9]+)-
+    (?P<tz_index>[\w\.]+)-
+    (?P<reserved>\d{2})-
+    (?P<period>\w+)-
+    (?P<date>\d{8})-
+    (?P<revision>\d{2})
+    _All.*?\.pdf$""",  # Ищем _All, затем любые символы, и только .pdf
+    re.IGNORECASE | re.VERBOSE
 )
+
 
 # Словарь для перевода номера месяца в название
 MONTH_MAP = {
@@ -106,80 +118,109 @@ def process_project_folder(project_path: Path):
     """Обрабатывает одну папку из INBOX_DIR."""
     print(f"\n--- Сканирование папки: {project_path.name} ---")
 
-    # 1. Ищем уникальный *_All.pdf файл
-    all_pdf_files = list(project_path.glob("*_All.pdf"))
-    if not all_pdf_files:
-        print("  - [ИНФО] Файл *_All.pdf не найден. Пропуск папки.")
+        # 1. Ищем уникальный PDF файл, содержащий _All и соответствующий шаблону
+    all_matching_files = []
+    # Ищем только PDF файлы, содержащие "_All"
+    for file_path in project_path.glob("*_All*.[pP][dD][fF]"):
+        if RE_FILENAME.match(file_path.name):
+            all_matching_files.append(file_path)
+
+    if not all_matching_files:
+        print("  - [ИНФО] Файл отчета, соответствующий шаблону, не найден. Пропуск папки.")
         return
-    if len(all_pdf_files) > 1:
-        print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Найдено несколько ({len(all_pdf_files)}) *_All.pdf файлов. Пропуск папки.")
+    if len(all_matching_files) > 1:
+        print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Найдено несколько ({len(all_matching_files)}) файлов отчетов. Пропуск папки.")
         return
     
-    pdf_file = all_pdf_files[0]
-    print(f"  - Найден файл для обработки: {pdf_file.name}")
+    report_file = all_matching_files[0]
+    print(f"  - Найден файл для обработки: {report_file.name}")
 
     # 2. Разбираем имя файла
-    match = RE_FILENAME.match(pdf_file.name)
+    match = RE_FILENAME.match(report_file.name)
     if not match:
-        print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Имя файла {pdf_file.name} не соответствует шаблону. Пропуск.")
+        print(f"  - [КРИТИЧЕСКАЯ ОШИБКА] Файл {report_file.name} не соответствует шаблону. Пропуск.")
         return
 
     data = match.groupdict()
+    print(f"  - Разобраны данные из имени файла:\n{json.dumps(data, indent=4, ensure_ascii=False)}")
+
     date_str = data["date"]
     year = date_str[:4]
     month_num = date_str[4:6]
     month_name = MONTH_MAP.get(month_num, "UnknownMonth")
     part = data["part"].upper()
-    
-    # Получаем и нормализуем имя объекта
-    object_name_raw = data["object_name"].upper()
-    object_name = normalize_object_name(object_name_raw)
-    
-    print(f"  - Разобраны данные: Год={year}, Месяц={month_num}.{month_name}, Part={part}, Объект={object_name} (исходное: {object_name_raw})")
+    month_folder_name = f"{month_num}.{month_name}"
 
-    # 3. Копируем PDF в простые директории
-    try:
-        print(f"  - Копирование в {NOTES_DIR.name}...")
-        shutil.copy(pdf_file, NOTES_DIR)
+    # 3. Определяем путь назначения в зависимости от LP или CS
+    pdf_dest_dir = None
+    archive_dest_dir = None
+
+    if part == 'LP':
+        print("  - [ИНФО] Логика для LP.")
+        object_name_raw = data["object_name"].upper()
+        object_name = normalize_object_name(object_name_raw)
         
-        copy_to_gst_folder(pdf_file, date_str, TRA_GST_DIR)
-    except Exception as e:
-        print(f"  - [ОШИБКА] Не удалось скопировать PDF: {e}")
+        pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / object_name
+        archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
+
+    elif part == 'CS':
+        print("  - [ИНФО] Логика для CS.")
+        tz_index = data["tz_index"]
+        
+        # Ищем папку по индексу в директории pdf
+        base_search_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
+        
+        # Создаем папку, если она не существует, чтобы поиск мог работать
+        base_search_dir.mkdir(parents=True, exist_ok=True)
+        
+        found_folders = list(base_search_dir.glob(f"{tz_index}*"))
+        
+        if not found_folders:
+            print(f"  - [ОШИБКА] Для индекса '{tz_index}' не найдена папка в {base_search_dir}. Пропуск.")
+            return
+        if len(found_folders) > 1:
+            print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Для индекса '{tz_index}' найдено несколько папок. Используется первая: {found_folders[0].name}")
+        
+        target_folder_name = found_folders[0].name
+        print(f"  - Найдена папка назначения для CS: {target_folder_name}")
+        
+        pdf_dest_dir = base_search_dir / target_folder_name
+        archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / target_folder_name
+
+    if not pdf_dest_dir or not archive_dest_dir:
+        print("  - [ОШИБКА] Не удалось определить пути назначения. Пропуск.")
         return
 
-
-    # 4. Копируем PDF по сложному пути
+    # 4. Копируем отчет в простые и сложные директории
     try:
-        month_folder_name = f"{month_num}.{month_name}"
-        pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / object_name
+        print(f"  - Копирование в {NOTES_DIR.name}...")
+        shutil.copy(report_file, NOTES_DIR)
+        
+        copy_to_gst_folder(report_file, date_str, TRA_GST_DIR)
+
         pdf_dest_dir.mkdir(parents=True, exist_ok=True)
-        print(f"  - Копирование PDF в: {pdf_dest_dir}")
-        shutil.copy(pdf_file, pdf_dest_dir)
+        print(f"  - Копирование отчета в: {pdf_dest_dir}")
+        shutil.copy(report_file, pdf_dest_dir)
     except Exception as e:
-        print(f"  - [ОШИБКА] Не удалось скопировать PDF по сложному пути: {e}")
+        print(f"  - [ОШИБКА] Не удалось скопировать отчет: {e}")
+        return
 
-            # 5. Архивируем исходную папку и перемещаем архив
+    # 5. Архивируем исходную папку и перемещаем архив (с перезаписью)
     try:
-        # Сначала определим путь назначения архива
-        month_folder_name = f"{month_num}.{month_name}"
-        archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
         archive_dest_dir.mkdir(parents=True, exist_ok=True)
-
-        # Создаем архив во временной папке
         archive_basename = TEMP_ARCHIVE_DIR / project_path.name
         print(f"  - Создание архива для папки: {project_path.name}...")
         archive_path_str = shutil.make_archive(str(archive_basename), 'zip', str(project_path))
         archive_path = Path(archive_path_str)
         
-        # Копируем архив в папку назначения с перезаписью
         print(f"  - Копирование архива в: {archive_dest_dir} (с перезаписью существующего)")
         shutil.copy(archive_path, archive_dest_dir)
-
+        
         # Удаляем временный архив после успешного копирования
         archive_path.unlink()
-
     except Exception as e:
         print(f"  - [ОШИБКА] Не удалось создать или переместить архив: {e}")
+
 
 def main():
     """Главная функция для распределения файлов."""
