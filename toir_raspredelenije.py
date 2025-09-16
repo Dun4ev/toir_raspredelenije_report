@@ -2,6 +2,7 @@ import re
 import shutil
 from pathlib import Path
 import sys
+from datetime import datetime
 
 # Настройка UTF-8 вывода в Windows-консоли
 try:
@@ -59,6 +60,48 @@ def normalize_object_name(object_name: str) -> str:
         return normalized_name
     return object_name
 
+def copy_to_gst_folder(report_file: Path, date_str: str, tra_gst_dir: Path):
+    """
+    Выполняет копирование в папку 04_TRA_GST по расширенному правилу.
+    """
+    print(f"  - Применение расширенного правила для {tra_gst_dir.name}...")
+    
+    try:
+        date_obj = datetime.strptime(date_str, '%Y%m%d')
+        week_number = date_obj.isocalendar()[1]
+        year = date_str[:4]
+    except ValueError:
+        print(f"  - [ОШИБКА] Неверный формат даты в строке '{date_str}'. Невозможно определить неделю.")
+        return
+
+    while True:
+        folder_name = f"{year}_T{week_number}_GST"
+        target_dir = tra_gst_dir / folder_name
+        
+        print(f"    - Проверка папки: {target_dir.name}")
+
+        is_locked = False
+        if target_dir.exists():
+            for ext in ["*.zip", "*.7z", "*.rar"]:
+                if any("CT-GST-TRA-PRM-" in archive.name for archive in target_dir.glob(ext)):
+                    print(f"    - Папка 'закрыта' архивом. Поиск следующей недели...")
+                    is_locked = True
+                    break
+        
+        if is_locked:
+            week_number += 1
+            continue
+        
+        print(f"    - Найдена 'свободная' папка: {target_dir.name}")
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(report_file, target_dir)
+            print(f"    - Файл успешно скопирован в: {target_dir}")
+            break
+        except Exception as e:
+            print(f"  - [ОШИБКА] Не удалось скопировать файл в папку GST: {e}")
+            break
+
 def process_project_folder(project_path: Path):
     """Обрабатывает одну папку из INBOX_DIR."""
     print(f"\n--- Сканирование папки: {project_path.name} ---")
@@ -98,11 +141,12 @@ def process_project_folder(project_path: Path):
     try:
         print(f"  - Копирование в {NOTES_DIR.name}...")
         shutil.copy(pdf_file, NOTES_DIR)
-        print(f"  - Копирование в {TRA_GST_DIR.name}...")
-        shutil.copy(pdf_file, TRA_GST_DIR)
+        
+        copy_to_gst_folder(pdf_file, date_str, TRA_GST_DIR)
     except Exception as e:
         print(f"  - [ОШИБКА] Не удалось скопировать PDF: {e}")
         return
+
 
     # 4. Копируем PDF по сложному пути
     try:
