@@ -158,20 +158,26 @@ def process_project_folder(project_path: Path):
     except Exception as e:
         print(f"  - [ОШИБКА] Не удалось скопировать PDF по сложному пути: {e}")
 
-    # 5. Архивируем исходную папку и перемещаем архив
+            # 5. Архивируем исходную папку и перемещаем архив
     try:
-        # Имя архива будет как имя папки, в которой он лежит
+        # Сначала определим путь назначения архива
+        month_folder_name = f"{month_num}.{month_name}"
+        archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
+        archive_dest_dir.mkdir(parents=True, exist_ok=True)
+
+        # Создаем архив во временной папке
         archive_basename = TEMP_ARCHIVE_DIR / project_path.name
         print(f"  - Создание архива для папки: {project_path.name}...")
         archive_path_str = shutil.make_archive(str(archive_basename), 'zip', str(project_path))
         archive_path = Path(archive_path_str)
         
-        month_folder_name = f"{month_num}.{month_name}"
-        archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
-        archive_dest_dir.mkdir(parents=True, exist_ok=True)
-        
-        print(f"  - Перемещение архива в: {archive_dest_dir}")
-        shutil.move(str(archive_path), archive_dest_dir)
+        # Копируем архив в папку назначения с перезаписью
+        print(f"  - Копирование архива в: {archive_dest_dir} (с перезаписью существующего)")
+        shutil.copy(archive_path, archive_dest_dir)
+
+        # Удаляем временный архив после успешного копирования
+        archive_path.unlink()
+
     except Exception as e:
         print(f"  - [ОШИБКА] Не удалось создать или переместить архив: {e}")
 
