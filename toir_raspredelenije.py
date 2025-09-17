@@ -6,6 +6,13 @@ from datetime import datetime
 from itertools import chain
 import json
 
+# Для работы с Excel требуется установка библиотеки openpyxl: pip install openpyxl
+try:
+    from openpyxl import load_workbook
+except ImportError:
+    print("[КРИТИЧЕСКАЯ ОШИБКА] Библиотека openpyxl не найдена. Пожалуйста, установите ее: pip install openpyxl")
+    sys.exit(1)
+
 # Настройка UTF-8 вывода в Windows-консоли
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -26,11 +33,18 @@ NOTES_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_te
 # 3. Папка для копирования PDF-файлов (трансмиттал)
 TRA_GST_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\04_TRA_GST")
 
-# 4. Корневая папка для создаваемой структуры (Год/Месяц/Part/pdf и Native)
+# 4. Папка для специальной группировки
+TRA_SUB_APP_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\05_TRA_SUB_app")
+
+# 5. Корневая папка для создаваемой структуры (Год/Месяц/Part/pdf и Native)
 DEST_ROOT_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel")
 
-# 5. Временная папка для создания архивов (может совпадать с DEST_ROOT_DIR)
+# 6. Временная папка для создания архивов (может совпадать с DEST_ROOT_DIR)
 TEMP_ARCHIVE_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel")
+
+# 7. Путь к файлу-справочнику
+TZ_FILE_PATH = Path("Template/TZ_glob.xlsx")
+
 
 # === НАСТРОЙКИ ЛОГИКИ ===
 
@@ -57,6 +71,81 @@ MONTH_MAP = {
     "05": "May", "06": "June", "07": "July", "08": "August",
     "09": "September", "10": "October", "11": "November", "12": "December"
 }
+
+# Настройки для файла-справочника TZ_glob.xlsx
+TZ_SHEET_NAME = "gen_cl"
+TZ_LOOKUP_COL = "B"  # Колонка с индексами (I.7.5)
+TZ_SUFFIX_COL = "G"  # Колонка с суффиксами (краткая аббревиатура)
+
+
+def find_suffix_in_tz_file(lookup_key: str) -> str | None:
+    """
+    Ищет индекс в файле TZ_glob.xlsx и возвращает суффикс.
+    """
+    if not TZ_FILE_PATH.exists():
+        print(f"  - [ОШИБКА] Файл-справочник не найден: {TZ_FILE_PATH}")
+        return None
+
+    try:
+        wb = load_workbook(TZ_FILE_PATH, data_only=True)
+        if TZ_SHEET_NAME not in wb.sheetnames:
+            print(f"  - [ОШИБКА] Лист '{TZ_SHEET_NAME}' не найден в файле {TZ_FILE_PATH}")
+            return None
+        
+        ws = wb[TZ_SHEET_NAME]
+        
+        lookup_col_idx = ord(TZ_LOOKUP_COL.upper()) - ord('A') + 1
+        suffix_col_idx = ord(TZ_SUFFIX_COL.upper()) - ord('A') + 1
+
+        for row in ws.iter_rows(min_row=2, values_only=True): # Начинаем со второй строки, пропуская заголовок
+            cell_value = str(row[lookup_col_idx - 1]).strip().lower() if row[lookup_col_idx - 1] else ""
+            if cell_value == lookup_key.strip().lower():
+                suffix = row[suffix_col_idx - 1]
+                return str(suffix).strip() if suffix else None
+        
+        return None
+    except Exception as e:
+        print(f"  - [ОШИБКА] Ошибка при чтении файла {TZ_FILE_PATH}: {e}")
+        return None
+
+
+def process_special_grouping_for_sub_app(report_file: Path, data: dict):
+    """
+    Выполняет специальную группировку и копирование в папку 05_TRA_SUB_app.
+    """
+    print(f"  - Применение специальной группировки для {TRA_SUB_APP_DIR.name}...")
+    try:
+        # 1. Формируем ключ группировки
+        grouping_key = f"{data['tz_index']}-{data['reserved']}-{data['period']}"
+        period = data['period'].upper()
+        
+        folder_name = ""
+
+        # 2. Определяем имя папки
+        if period == 'C':
+            folder_name = grouping_key
+            print(f"    - Группа 'Корректирующее'. Имя папки: {folder_name}")
+        else:
+            tz_index = data['tz_index']
+            print(f"    - Поиск суффикса для индекса: {tz_index}")
+            suffix = find_suffix_in_tz_file(tz_index)
+            
+            if not suffix:
+                print(f"    - [ПРЕДУПРЕЖДЕНИЕ] Суффикс для индекса '{tz_index}' не найден. Копирование в эту папку будет пропущено.")
+                return
+            
+            print(f"    - Найден суффикс: '{suffix}'")
+            folder_name = f"{grouping_key}_{suffix}"
+
+        # 3. Копируем файл
+        dest_dir = TRA_SUB_APP_DIR / folder_name
+        dest_dir.mkdir(exist_ok=True)
+        print(f"    - Копирование файла в: {dest_dir}")
+        shutil.copy(report_file, dest_dir)
+
+    except Exception as e:
+        print(f"  - [ОШИБКА] Не удалось выполнить специальную группировку: {e}")
+
 
 def normalize_object_name(object_name: str) -> str:
     """
@@ -204,6 +293,9 @@ def process_project_folder(project_path: Path):
         shutil.copy(report_file, NOTES_DIR)
         
         copy_to_gst_folder(report_file, date_str, TRA_GST_DIR)
+
+        # Выполняем новую специальную группировку
+        process_special_grouping_for_sub_app(report_file, data)
 
         pdf_dest_dir.mkdir(parents=True, exist_ok=True)
         print(f"  - Копирование отчета в: {pdf_dest_dir}")
