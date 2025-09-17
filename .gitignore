@@ -1,0 +1,50 @@
+# Виртуальное окружение
+.venv/
+
+# Конфиденциальные и личные данные
+*.env
+*.key
+*.pem
+*.pfx
+*.crt
+*.bak
+*.tmp
+*.log
+
+# Результаты и промежуточные выгрузки
+2025/*/CS/
+2025/*/LP/
+
+# Реальные архивы и боевые данные
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.pdf
+!templates/*.pdf
+
+# Конфигурации с путями
+Template/TZ_glob.xlsx
+
+# Тестовые артефакты
+__pycache__/
+*.pyc
+*.pyo
+*.pytest_cache/
+
+# IDE и системные файлы
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Логи и временные файлы
+*.log
+*.swp
+*.swo
+~*
+
+# Исключения для тестовых PDF и шаблонов
+!templates/fixtures/*.pdf
+!templates/*.xlsx
