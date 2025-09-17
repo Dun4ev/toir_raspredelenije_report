@@ -118,7 +118,7 @@ def process_project_folder(project_path: Path):
     """Обрабатывает одну папку из INBOX_DIR."""
     print(f"\n--- Сканирование папки: {project_path.name} ---")
 
-        # 1. Ищем уникальный PDF файл, содержащий _All и соответствующий шаблону
+    # 1. Ищем уникальный PDF файл, содержащий _All и соответствующий шаблону
     all_matching_files = []
     # Ищем только PDF файлы, содержащие "_All"
     for file_path in project_path.glob("*_All*.[pP][dD][fF]"):
@@ -150,42 +150,49 @@ def process_project_folder(project_path: Path):
     month_name = MONTH_MAP.get(month_num, "UnknownMonth")
     part = data["part"].upper()
     month_folder_name = f"{month_num}.{month_name}"
+    period = data['period'].upper()
 
-    # 3. Определяем путь назначения в зависимости от LP или CS
+    # 3. Определяем путь назначения
     pdf_dest_dir = None
     archive_dest_dir = None
 
-    if part == 'LP':
-        print("  - [ИНФО] Логика для LP.")
-        object_name_raw = data["object_name"].upper()
-        object_name = normalize_object_name(object_name_raw)
+    if period == 'C':
+        print("  - [ИНФО] Логика для Корректирующего обслуживания.")
+        target_folder_name = "Корректирующее ослуживание"
         
-        pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / object_name
-        archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
-
-    elif part == 'CS':
-        print("  - [ИНФО] Логика для CS.")
-        tz_index = data["tz_index"]
-        
-        # Ищем папку по индексу в директории pdf
-        base_search_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
-        
-        # Создаем папку, если она не существует, чтобы поиск мог работать
-        base_search_dir.mkdir(parents=True, exist_ok=True)
-        
-        found_folders = list(base_search_dir.glob(f"{tz_index}*"))
-        
-        if not found_folders:
-            print(f"  - [ОШИБКА] Для индекса '{tz_index}' не найдена папка в {base_search_dir}. Пропуск.")
-            return
-        if len(found_folders) > 1:
-            print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Для индекса '{tz_index}' найдено несколько папок. Используется первая: {found_folders[0].name}")
-        
-        target_folder_name = found_folders[0].name
-        print(f"  - Найдена папка назначения для CS: {target_folder_name}")
-        
-        pdf_dest_dir = base_search_dir / target_folder_name
+        pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / target_folder_name
         archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / target_folder_name
+    
+    else:
+        print("  - [ИНФО] Логика для периодического обслуживания.")
+        if part == 'LP':
+            print("  - [ИНФО] Логика для LP.")
+            object_name_raw = data["object_name"].upper()
+            object_name = normalize_object_name(object_name_raw)
+            
+            pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / object_name
+            archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
+
+        elif part == 'CS':
+            print("  - [ИНФО] Логика для CS.")
+            tz_index = data["tz_index"]
+            
+            base_search_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
+            base_search_dir.mkdir(parents=True, exist_ok=True)
+            
+            found_folders = list(base_search_dir.glob(f"{tz_index}*"))
+            
+            if not found_folders:
+                print(f"  - [ОШИБКА] Для индекса '{tz_index}' не найдена папка в {base_search_dir}. Пропуск.")
+                return
+            if len(found_folders) > 1:
+                print(f"  - [ПРЕДУПРЕЖДЕНИЕ] Для индекса '{tz_index}' найдено несколько папок. Используется первая: {found_folders[0].name}")
+            
+            target_folder_name = found_folders[0].name
+            print(f"  - Найдена папка назначения для CS: {target_folder_name}")
+            
+            pdf_dest_dir = base_search_dir / target_folder_name
+            archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / target_folder_name
 
     if not pdf_dest_dir or not archive_dest_dir:
         print("  - [ОШИБКА] Не удалось определить пути назначения. Пропуск.")
@@ -220,6 +227,7 @@ def process_project_folder(project_path: Path):
         archive_path.unlink()
     except Exception as e:
         print(f"  - [ОШИБКА] Не удалось создать или переместить архив: {e}")
+
 
 
 def main():
