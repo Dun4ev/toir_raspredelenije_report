@@ -292,6 +292,48 @@ def launch(base_dir: Path | None = None) -> None:
             summary_var.set("Журналы не найдены")
 
     refresh_button.config(command=refresh_runs)
+
+    delete_button = ttk.Button(list_frame, text="Удалить все кроме последнего")
+    delete_button.pack(fill=tk.X, pady=(4, 0))
+
+    def delete_old_runs() -> None:
+        runs = list_runs(base_dir=root_dir)
+        if len(runs) <= 1:
+            messagebox.showinfo("Журналы", "Нечего удалять.")
+            return
+        latest = runs[-1]
+        proceed = messagebox.askyesno("Журналы", f"Удалить {len(runs) - 1} файлов, кроме {latest.run_id}?")
+        if not proceed:
+            return
+        for run in runs[:-1]:
+            try:
+                run.file_path.unlink(missing_ok=True)  # type: ignore[arg-type]
+            except OSError as exc:
+                messagebox.showerror("Ошибка", f"Не удалось удалить {run.file_path}: {exc}")
+                return
+        messagebox.showinfo("Журналы", "Удаление выполнено.")
+        refresh_runs()
+
+    delete_button.config(command=delete_old_runs)
+
+    def open_selected_entry() -> None:
+        if not current_entries:
+            messagebox.showinfo("Подсказка", "Записи не найдены")
+            return
+        selection = tree.selection()
+        if not selection:
+            messagebox.showinfo("Подсказка", "Выберите строку в таблице")
+            return
+        index = int(selection[0])
+        if index >= len(current_entries):
+            return
+        target_path = current_entries[index].target_path
+        if target_path is None:
+            messagebox.showinfo("Подсказка", "Для записи нет целевого пути")
+            return
+        _open_path(target_path.parent if target_path.is_file() else target_path)
+
+    tree.bind("<Double-1>", lambda _event: open_selected_entry())
     run_listbox.bind("<<ListboxSelect>>", on_run_select)
 
     refresh_runs()

@@ -360,7 +360,7 @@ def process_project_folder(project_path: Path) -> None:
 
     if period == 'C':
         print("  - [Инфо] Рабочий режим: еженедельный (C).")
-        target_folder_name = "Еженедельные отчёты"
+        target_folder_name = "Корректирующее обслуживание"
         pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / target_folder_name
         archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / target_folder_name
     else:
