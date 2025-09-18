@@ -85,6 +85,19 @@ TZ_SHEET_NAME = "gen_cl"
 TZ_LOOKUP_COL = "B"  # Колонка с индексами (I.7.5)
 TZ_SUFFIX_COL = "G"
 
+CS_FOLDER_OVERRIDES: dict[str, str] = {
+    "II.1.1": "II.1",
+    "II.2.7": "II.2",
+    "II.18.2": "II.18",
+    # Добавляйте остальные индексы по мере необходимости
+}
+
+
+LP_FOLDER_OVERRIDES: dict[str, str] = {
+    # Добавляйте сопоставления, если объект должен попадать в другую папку
+}
+
+
 LOGGER: DispatchLogger | None = None
 
 def _merge_metadata(base: dict[str, str] | None, extra: dict[str, str]) -> dict[str, str]:
@@ -369,20 +382,27 @@ def process_project_folder(project_path: Path) -> None:
             print("  - [Инфо] Раздел LP.")
             object_name_raw = data["object_name"].upper()
             object_name = normalize_object_name(object_name_raw)
-            pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / object_name
-            archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / object_name
-            base_metadata = _merge_metadata(base_metadata, {"destination_folder": object_name})
+            folder_name = LP_FOLDER_OVERRIDES.get(object_name, object_name)
+            if folder_name != object_name:
+                print(f"  - [Инфо] Используем сопоставление LP: {object_name} → {folder_name}")
+            pdf_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / folder_name
+            archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / folder_name
+            base_metadata = _merge_metadata(base_metadata, {"destination_folder": folder_name, "destination_prefix": folder_name})
         elif part == 'CS':
             print("  - [Инфо] Раздел CS.")
             tz_index = data["tz_index"]
             base_metadata = _merge_metadata(base_metadata, {"tz_index": tz_index})
 
+            folder_prefix = CS_FOLDER_OVERRIDES.get(tz_index, tz_index)
+            if folder_prefix != tz_index:
+                print(f"  - [Инфо] Используем префикс из справочника: {folder_prefix}")
+
             base_search_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
             base_search_dir.mkdir(parents=True, exist_ok=True)
 
-            found_folders = list(base_search_dir.glob(f"{tz_index}*"))
+            found_folders = list(base_search_dir.glob(f"{folder_prefix}*"))
             if not found_folders:
-                message = f"Не найдена папка по индексу {tz_index} в {base_search_dir}"
+                message = f"Не найдена папка по индексу {folder_prefix} в {base_search_dir}"
                 print(f"  - [Ошибка] {message}")
                 _log_error(TransferAction.COPY_DESTINATION, report_file, None, message, base_metadata)
                 return
@@ -392,7 +412,7 @@ def process_project_folder(project_path: Path) -> None:
             target_folder_name = found_folders[0].name
             pdf_dest_dir = base_search_dir / target_folder_name
             archive_dest_dir = DEST_ROOT_DIR / year / month_folder_name / part / "Native" / target_folder_name
-            base_metadata = _merge_metadata(base_metadata, {"destination_folder": target_folder_name})
+            base_metadata = _merge_metadata(base_metadata, {"destination_folder": target_folder_name, "destination_prefix": folder_prefix})
 
     if not pdf_dest_dir or not archive_dest_dir:
         message = "Не удалось определить директорию назначения."
