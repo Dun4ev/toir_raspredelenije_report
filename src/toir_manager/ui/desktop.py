@@ -167,8 +167,15 @@ def launch(base_dir: Path | None = None) -> None:
     log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
     log_text.configure(yscrollcommand=log_scroll.set)
 
-    def append_log(message: str) -> None:
-        log_text.insert(tk.END, message)
+    log_text.tag_config("info", foreground="#222222")
+    log_text.tag_config("stdout", foreground="#176f34")
+    log_text.tag_config("stderr", foreground="#bb1d1d")
+    log_text.tag_config("status", foreground="#124b8a", font=("TkDefaultFont", 9, "bold"))
+
+    def append_log(message: str, tag: str = "info") -> None:
+        if not message:
+            return
+        log_text.insert(tk.END, message, (tag,))
         log_text.see(tk.END)
 
     def clear_log() -> None:
@@ -196,9 +203,9 @@ def launch(base_dir: Path | None = None) -> None:
             root.after(200, handle_queue)
             return
         returncode, stdout, stderr = result_queue.get()
-        append_log(stdout or "")
+        append_log(stdout or "", tag="stdout")
         if stderr:
-            append_log("\n[stderr]\n" + stderr)
+            append_log("\n[stderr]\n" + stderr, tag="stderr")
         if returncode == 0:
             status_var.set("Готово")
             messagebox.showinfo("Распределение", "Обработка завершена успешно.")
