@@ -49,6 +49,26 @@ DEST_ROOT_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenij
 # 6. Временная папка для создания архивов (может совпадать с DEST_ROOT_DIR)
 TEMP_ARCHIVE_DIR = Path(r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel")
 
+def _override_path(default: Path, env_name: str) -> Path:
+    """?????????? ???? ? ?????? ?????????? ?????????."""
+
+    override = os.environ.get(env_name)
+    if not override:
+        return default
+    candidate = Path(override).expanduser()
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate
+
+
+INBOX_DIR = _override_path(INBOX_DIR, "TOIR_INBOX_DIR")
+NOTES_DIR = _override_path(NOTES_DIR, "TOIR_NOTES_DIR")
+TRA_GST_DIR = _override_path(TRA_GST_DIR, "TOIR_TRA_GST_DIR")
+TRA_SUB_APP_DIR = _override_path(TRA_SUB_APP_DIR, "TOIR_TRA_SUB_APP_DIR")
+DEST_ROOT_DIR = _override_path(DEST_ROOT_DIR, "TOIR_DEST_ROOT_DIR")
+TEMP_ARCHIVE_DIR = _override_path(TEMP_ARCHIVE_DIR, "TOIR_TEMP_ARCHIVE_DIR")
+
 # 7. Путь к файлу-справочнику
 TZ_FILE_PATH = Path("Template/TZ_glob.xlsx")
 

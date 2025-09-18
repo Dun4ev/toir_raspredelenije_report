@@ -24,13 +24,14 @@ if str(REPO_ROOT) not in sys.path:
 
 pipeline = importlib.import_module("toir_raspredelenije")
 DEFAULT_INBOX = pipeline.INBOX_DIR
-DESTINATIONS = {
-    "INBOX": DEFAULT_INBOX,
-    "NOTES": pipeline.NOTES_DIR,
-    "TRA_GST": pipeline.TRA_GST_DIR,
-    "TRA_SUB_APP": pipeline.TRA_SUB_APP_DIR,
-    "DEST_ROOT": pipeline.DEST_ROOT_DIR,
-}
+DESTINATION_CONFIG = (
+    ("INBOX", "TOIR_INBOX_DIR", DEFAULT_INBOX),
+    ("NOTES", "TOIR_NOTES_DIR", pipeline.NOTES_DIR),
+    ("TRA_GST", "TOIR_TRA_GST_DIR", pipeline.TRA_GST_DIR),
+    ("TRA_SUB_APP", "TOIR_TRA_SUB_APP_DIR", pipeline.TRA_SUB_APP_DIR),
+    ("DEST_ROOT", "TOIR_DEST_ROOT_DIR", pipeline.DEST_ROOT_DIR),
+)
+DESTINATION_LABELS = {env: name for name, env, _ in DESTINATION_CONFIG}
 PIPELINE_SCRIPT = REPO_ROOT / "toir_raspredelenije.py"
 
 
@@ -110,29 +111,54 @@ def launch(base_dir: Path | None = None) -> None:
     inbox_entry = ttk.Entry(control_tab, textvariable=inbox_var, width=80)
     inbox_entry.grid(row=1, column=0, sticky=tk.W)
 
-    def choose_inbox() -> None:
-        selected = filedialog.askdirectory(initialdir=inbox_var.get() or str(DEFAULT_INBOX))
+    dest_vars: dict[str, tk.StringVar] = {"TOIR_INBOX_DIR": inbox_var}
+
+    def select_directory(target_var: tk.StringVar, fallback: Path) -> None:
+        """Выбрать каталог через диалог и обновить поле."""
+
+        selected = filedialog.askdirectory(initialdir=target_var.get() or str(fallback))
         if selected:
-            inbox_var.set(selected)
+            target_var.set(selected)
+
+    def open_directory(target_var: tk.StringVar) -> None:
+        """Открыть каталог, указанный в поле."""
+
+        raw_value = target_var.get().strip()
+        if not raw_value:
+            messagebox.showinfo("Папка не задана", "Сначала укажите путь.")
+            return
+        _open_path(Path(raw_value).expanduser())
+
+
+    def choose_inbox() -> None:
+        select_directory(inbox_var, DEFAULT_INBOX)
 
     ttk.Button(control_tab, text="Выбрать...", command=choose_inbox).grid(row=1, column=1, padx=(8, 0))
+    ttk.Button(control_tab, text="Открыть", command=lambda: open_directory(inbox_var)).grid(row=1, column=2, padx=(8, 0))
 
     ttk.Label(control_tab, text="Назначения").grid(row=2, column=0, sticky=tk.W, pady=(10, 2))
 
     dest_frame = ttk.Frame(control_tab)
-    dest_frame.grid(row=3, column=0, columnspan=2, sticky=tk.W)
-    for idx, (label, path) in enumerate(DESTINATIONS.items()):
+    dest_frame.grid(row=3, column=0, columnspan=3, sticky=tk.W)
+    for name, env_name, default_path in DESTINATION_CONFIG[1:]:
         row = ttk.Frame(dest_frame)
         row.pack(fill=tk.X, pady=2)
-        ttk.Label(row, text=f"{label}: {path}").pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(row, text="Открыть", command=lambda p=path: _open_path(p)).pack(side=tk.RIGHT, padx=(4, 0))  # type: ignore[misc]
+        ttk.Label(row, text=f"{name}:").pack(side=tk.LEFT, padx=(0, 6))
+        var = tk.StringVar(value=str(default_path))
+        dest_vars[env_name] = var
+        ttk.Entry(row, textvariable=var, width=68).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(row, text="Выбрать...", command=lambda v=var, d=default_path: select_directory(v, d)).pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(row, text="Открыть", command=lambda v=var: open_directory(v)).pack(side=tk.LEFT, padx=(4, 0))
 
     status_var = tk.StringVar(value="Готово")
     ttk.Label(control_tab, textvariable=status_var).grid(row=4, column=0, sticky=tk.W, pady=(10, 0))
 
+    button_frame = ttk.Frame(control_tab)
+    button_frame.grid(row=5, column=0, columnspan=3, sticky=tk.E, pady=(8, 0))
+
     log_frame = ttk.Frame(control_tab)
-    log_frame.grid(row=5, column=0, columnspan=2, sticky=tk.NSEW, pady=(8, 0))
-    control_tab.rowconfigure(5, weight=1)
+    log_frame.grid(row=6, column=0, columnspan=3, sticky=tk.NSEW, pady=(8, 0))
+    control_tab.rowconfigure(6, weight=1)
     control_tab.columnconfigure(0, weight=1)
 
     log_text = tk.Text(log_frame, wrap=tk.WORD, height=18)
@@ -148,14 +174,10 @@ def launch(base_dir: Path | None = None) -> None:
     def clear_log() -> None:
         log_text.delete("1.0", tk.END)
 
-    button_frame = ttk.Frame(control_tab)
-    button_frame.grid(row=6, column=0, columnspan=2, sticky=tk.E, pady=(8, 0))
-
-    def distribution_worker(selected_dir: Path) -> None:
+    def distribution_worker(env_overrides: dict[str, str]) -> None:
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
-        if selected_dir:
-            env["TOIR_INBOX_DIR"] = str(selected_dir)
+        env.update(env_overrides)
         cmd = [sys.executable, str(PIPELINE_SCRIPT)]
         process = subprocess.run(
             cmd,
@@ -167,6 +189,7 @@ def launch(base_dir: Path | None = None) -> None:
             env=env,
         )
         result_queue.put((process.returncode, process.stdout, process.stderr))
+
 
     def handle_queue() -> None:
         if result_queue.empty():
@@ -188,21 +211,33 @@ def launch(base_dir: Path | None = None) -> None:
         is_running.set(False)
         root.after(200, handle_queue)
 
+
     def start_distribution() -> None:
         if is_running.get():
             return
-        selected_dir = Path(inbox_var.get()).expanduser()
-        if not selected_dir.exists():
-            messagebox.showerror("Ошибка", f"Каталог не найден: {selected_dir}")
+        overrides: dict[str, str] = {}
+        for env_name, var in dest_vars.items():
+            raw_value = var.get().strip()
+            if not raw_value:
+                label = DESTINATION_LABELS.get(env_name, env_name)
+                messagebox.showerror("Ошибка", f"Укажите путь для {label}.")
+                return
+            resolved = Path(raw_value).expanduser()
+            overrides[env_name] = str(resolved)
+        inbox_path = Path(overrides["TOIR_INBOX_DIR"])
+        if not inbox_path.exists():
+            messagebox.showerror("Ошибка", f"Папка не найдена: {inbox_path}")
             return
         clear_log()
         status_var.set("Выполняется...")
-        append_log(f"Запуск распределения для {selected_dir}\n\n")
+        append_log(f"Запуск распределения для {inbox_path}\n\n")
         run_button.config(state=tk.DISABLED)
         cancel_button.config(state=tk.DISABLED)
         is_running.set(True)
-        thread = threading.Thread(target=distribution_worker, args=(selected_dir,), daemon=True)
+        thread = threading.Thread(target=distribution_worker, args=(overrides,), daemon=True)
         thread.start()
+
+
 
     def cancel_distribution() -> None:
         messagebox.showinfo("Отмена", "Остановка выполняется по завершении текущего запуска.")
