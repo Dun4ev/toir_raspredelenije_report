@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib
+import shutil
 import os
 import queue
 import subprocess
@@ -14,7 +15,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Iterable
 
-from toir_manager.core.logging_models import TransferLogEntry
+from toir_manager.core.logging_models import TransferLogEntry, TransferStatus
 from toir_manager.services.log_reader import list_runs, summarize_entries
 from toir_manager.services.log_writer import iter_run_logs
 
@@ -33,6 +34,44 @@ DESTINATION_CONFIG = (
 )
 DESTINATION_LABELS = {env: name for name, env, _ in DESTINATION_CONFIG}
 PIPELINE_SCRIPT = REPO_ROOT / "toir_raspredelenije.py"
+
+
+
+def _collect_processed_projects(
+    entries: Iterable[TransferLogEntry], inbox_path: Path
+) -> list[Path]:
+    """Определить каталоги из INBOX, успешно обработанные без ошибок."""
+
+    resolved_inbox = inbox_path.expanduser()
+    try:
+        resolved_inbox = resolved_inbox.resolve(strict=False)
+    except OSError:
+        pass
+
+    states: dict[Path, dict[str, bool]] = {}
+    for entry in entries:
+        source = entry.source_path
+        if source is None:
+            continue
+        project_dir = source.parent
+        try:
+            project_dir = project_dir.resolve(strict=False)
+        except OSError:
+            pass
+        if project_dir != resolved_inbox and resolved_inbox not in project_dir.parents:
+            continue
+        state = states.setdefault(project_dir, {"success": False, "error": False})
+        if entry.status == TransferStatus.SUCCESS:
+            state["success"] = True
+        elif entry.status == TransferStatus.ERROR:
+            state["error"] = True
+    result = [
+        directory
+        for directory, flags in states.items()
+        if flags["success"] and not flags["error"] and directory.exists()
+    ]
+    result.sort()
+    return result
 
 
 def _format_row(entry: TransferLogEntry) -> tuple[str, str, str, str, str, str]:
@@ -181,6 +220,57 @@ def launch(base_dir: Path | None = None) -> None:
     def clear_log() -> None:
         log_text.delete("1.0", tk.END)
 
+    def cleanup_processed_projects() -> None:
+        if is_running.get():
+            messagebox.showinfo("Очистка INBOX", "Дождитесь завершения текущего запуска.")
+            return
+        inbox_path = Path(inbox_var.get()).expanduser()
+        if not inbox_path.exists():
+            messagebox.showerror("Очистка INBOX", f"Папка не найдена: {inbox_path}")
+            return
+        runs = list_runs(base_dir=root_dir)
+        if not runs:
+            messagebox.showinfo("Очистка INBOX", "Журналы не найдены.")
+            return
+        entries = _load_entries(root_dir, runs[0].run_id)
+        candidates = _collect_processed_projects(entries, inbox_path)
+        if not candidates:
+            messagebox.showinfo("Очистка INBOX", "Нет завершённых проектов для удаления.")
+            return
+        preview_lines = [f"• {path.name}" for path in candidates[:5]]
+        remaining = len(candidates) - len(preview_lines)
+        if remaining > 0:
+            preview_lines.append(f"... и ещё {remaining}")
+        question = (
+            f"Удалить {len(candidates)} папок из {inbox_path}?\n\n" + "\n".join(preview_lines)
+        )
+        if not messagebox.askyesno("Очистка INBOX", question):
+            return
+        failures: list[tuple[Path, Exception]] = []
+        removed = 0
+        for directory in candidates:
+            try:
+                shutil.rmtree(directory)
+                removed += 1
+                append_log(f"[cleanup] Удалена папка {directory}\n", tag="stdout")
+            except OSError as exc:
+                failures.append((directory, exc))
+                append_log(
+                    f"[cleanup] Ошибка удаления {directory}: {exc}\n", tag="stderr"
+                )
+        if failures:
+            message = "Не удалось удалить:\n" + "\n".join(
+                f"• {path.name}: {exc}" for path, exc in failures
+            )
+            messagebox.showerror("Очистка INBOX", message)
+        if removed:
+            messagebox.showinfo("Очистка INBOX", f"Удалено папок: {removed}")
+
+    cleanup_button = ttk.Button(
+        button_frame, text="Удалить обработанные", command=cleanup_processed_projects
+    )
+    cleanup_button.pack(side=tk.LEFT, padx=(0, 12))
+
     def distribution_worker(env_overrides: dict[str, str]) -> None:
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
@@ -215,6 +305,7 @@ def launch(base_dir: Path | None = None) -> None:
             messagebox.showerror("Распределение", f"Скрипт завершился с кодом {returncode}.")
         run_button.config(state=tk.NORMAL)
         cancel_button.config(state=tk.DISABLED)
+        cleanup_button.config(state=tk.NORMAL)
         is_running.set(False)
         root.after(200, handle_queue)
 
@@ -240,6 +331,7 @@ def launch(base_dir: Path | None = None) -> None:
         append_log(f"Запуск распределения для {inbox_path}\n\n")
         run_button.config(state=tk.DISABLED)
         cancel_button.config(state=tk.DISABLED)
+        cleanup_button.config(state=tk.DISABLED)
         is_running.set(True)
         thread = threading.Thread(target=distribution_worker, args=(overrides,), daemon=True)
         thread.start()
@@ -345,11 +437,11 @@ def launch(base_dir: Path | None = None) -> None:
         if len(runs) <= 1:
             messagebox.showinfo("Журналы", "Нечего удалять.")
             return
-        latest = runs[-1]
+        latest = runs[0]
         proceed = messagebox.askyesno("Журналы", f"Удалить {len(runs) - 1} файлов, кроме {latest.run_id}?")
         if not proceed:
             return
-        for run in runs[:-1]:
+        for run in runs[1:]:
             try:
                 run.file_path.unlink(missing_ok=True)  # type: ignore[arg-type]
             except OSError as exc:
