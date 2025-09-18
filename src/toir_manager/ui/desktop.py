@@ -37,6 +37,8 @@ PIPELINE_SCRIPT = REPO_ROOT / "toir_raspredelenije.py"
 
 
 
+
+
 def _collect_processed_projects(
     entries: Iterable[TransferLogEntry], inbox_path: Path
 ) -> list[Path]:
@@ -72,6 +74,76 @@ def _collect_processed_projects(
     ]
     result.sort()
     return result
+
+
+def _confirm_cleanup_dialog(parent: tk.Misc, inbox_path: Path, candidates: list[Path]) -> bool:
+    """Показать диалог подтверждения очистки INBOX с полным списком папок."""
+
+    dialog = tk.Toplevel(parent)
+    dialog.title("Очистка INBOX")
+    dialog.transient(parent)
+    dialog.minsize(520, 320)
+    dialog.grab_set()
+
+    frame = ttk.Frame(dialog, padding=12)
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    header = ttk.Label(
+        frame,
+        text=f"Удалить {len(candidates)} папок из {inbox_path}?",
+        anchor="w",
+        justify=tk.LEFT,
+        wraplength=480,
+    )
+    header.pack(fill=tk.X)
+
+    list_frame = ttk.Frame(frame)
+    list_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 12))
+    scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
+    listbox = tk.Listbox(
+        list_frame,
+        height=min(18, max(6, len(candidates))),
+        width=70,
+        exportselection=False,
+        yscrollcommand=scrollbar.set,
+    )
+    scrollbar.config(command=listbox.yview)
+    listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    resolved_inbox = inbox_path.expanduser()
+    try:
+        resolved_inbox = resolved_inbox.resolve(strict=False)
+    except OSError:
+        pass
+    for path in candidates:
+        try:
+            display = path.resolve(strict=False).relative_to(resolved_inbox)
+        except ValueError:
+            display = Path(path)
+        listbox.insert(tk.END, str(display))
+
+    result = tk.BooleanVar(value=False, master=parent)
+
+    def on_confirm() -> None:
+        result.set(True)
+        dialog.destroy()
+
+    def on_cancel() -> None:
+        result.set(False)
+        dialog.destroy()
+
+    button_frame = ttk.Frame(frame)
+    button_frame.pack(fill=tk.X)
+    ttk.Button(button_frame, text="Удалить", command=on_confirm).pack(side=tk.RIGHT, padx=(8, 0))
+    ttk.Button(button_frame, text="Отмена", command=on_cancel).pack(side=tk.RIGHT)
+
+    dialog.bind("<Return>", lambda _event: on_confirm())
+    dialog.bind("<Escape>", lambda _event: on_cancel())
+    dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+
+    parent.wait_window(dialog)
+    return bool(result.get())
 
 
 def _format_row(entry: TransferLogEntry) -> tuple[str, str, str, str, str, str]:
@@ -237,14 +309,7 @@ def launch(base_dir: Path | None = None) -> None:
         if not candidates:
             messagebox.showinfo("Очистка INBOX", "Нет завершённых проектов для удаления.")
             return
-        preview_lines = [f"• {path.name}" for path in candidates[:5]]
-        remaining = len(candidates) - len(preview_lines)
-        if remaining > 0:
-            preview_lines.append(f"... и ещё {remaining}")
-        question = (
-            f"Удалить {len(candidates)} папок из {inbox_path}?\n\n" + "\n".join(preview_lines)
-        )
-        if not messagebox.askyesno("Очистка INBOX", question):
+        if not _confirm_cleanup_dialog(root, inbox_path, candidates):
             return
         failures: list[tuple[Path, Exception]] = []
         removed = 0
