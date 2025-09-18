@@ -125,7 +125,7 @@ def launch(base_dir: Path | None = None) -> None:
         row = ttk.Frame(dest_frame)
         row.pack(fill=tk.X, pady=2)
         ttk.Label(row, text=f"{label}: {path}").pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(row, text="Открыть", command=lambda p=path: _open_path(p)).pack(side=tk.RIGHT, padx=(4, 0))
+        ttk.Button(row, text="Открыть", command=lambda p=path: _open_path(p)).pack(side=tk.RIGHT, padx=(4, 0))  # type: ignore[misc]
 
     status_var = tk.StringVar(value="Готово")
     ttk.Label(control_tab, textvariable=status_var).grid(row=4, column=0, sticky=tk.W, pady=(10, 0))
@@ -161,6 +161,8 @@ def launch(base_dir: Path | None = None) -> None:
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(REPO_ROOT),
             env=env,
         )

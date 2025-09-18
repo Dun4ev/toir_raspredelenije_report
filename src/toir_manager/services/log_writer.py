@@ -8,7 +8,7 @@ import threading
 from contextlib import AbstractContextManager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Iterator, Optional
 
 from toir_manager.core.logging_models import (
     TransferAction,

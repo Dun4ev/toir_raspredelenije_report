@@ -3,7 +3,6 @@ import shutil
 from pathlib import Path
 import sys
 from datetime import datetime
-from itertools import chain
 import json
 import os
 
@@ -11,8 +10,8 @@ SRC_DIR = Path(__file__).resolve().parent / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from toir_manager.core.logging_models import TransferAction, TransferStatus
-from toir_manager.services.log_writer import DispatchLogger
+from toir_manager.core.logging_models import TransferAction  # noqa: E402
+from toir_manager.services.log_writer import DispatchLogger  # noqa: E402
 
 # Для работы с Excel требуется установка библиотеки openpyxl: pip install openpyxl
 try:
@@ -23,8 +22,8 @@ except ImportError:
 
 # Настройка UTF-8 вывода в Windows-консоли
 try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined, union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined, union-attr]
 except Exception:
     pass
 
@@ -87,9 +86,65 @@ TZ_SUFFIX_COL = "G"
 
 CS_FOLDER_OVERRIDES: dict[str, str] = {
     "II.1.1": "II.1",
+    "II.1.2": "II.1",
+    "II.1.3": "II.1",
+    "II.1.4": "II.1",
+    "II.1.5": "II.1",
+    "II.1.6": "II.1",
+    "II.1.7": "II.1",
+    "II.1.8": "II.1",
+    "II.2.1": "II.2",
+    "II.2.2": "II.2",
+    "II.2.3": "II.2",
+    "II.2.4": "II.2",
+    "II.2.5": "II.2",
+    "II.2.6": "II.2",
     "II.2.7": "II.2",
+    "II.2.8": "II.2",
+    "II.2.9": "II.2",
+    "II.2.10": "II.2",
+    "II.2.11": "II.2",
+    "II.2.12": "II.2",
+    "II.2.13": "II.2",
+    "II.3.1": "II.3",
+    "II.3.2": "II.3",
+    "II.3.3": "II.3",
+    "II.3.4": "II.3",
+    "II.3.5": "II.3",
+    "II.4.1": "II.4",
+    "II.5.1": "II.5",
+    "II.6.1": "II.6",
+    "II.6.2": "II.6",
+    "II.7.1": "II.7",
+    "II.8.1": "II.8",
+    "II.8.1.1": "II.8",
+    "II.8.2": "II.8",
+    "II.8.2.1": "II.8",
+    "II.8.3": "II.8",
+    "II.8.3.1": "II.8",
+    "II.8.4": "II.8",
+    "II.8.5": "II.8",
+    "II.8.6": "II.8",
+    "II.8.7": "II.8",
+    "II.9.1": "II.9",
     "II.18.2": "II.18",
-    # Добавляйте остальные индексы по мере необходимости
+    "II.19.1": "II.19",
+    "II.19.2": "II.19",
+    "II.22.1": "II.22",
+    "II.22.3": "II.22",
+    "II.22.4": "II.22",
+    "II.23.1": "II.23",
+    "II.23.2": "II.23",
+    "II.23.3": "II.23",
+    "II.25.1": "II.25",
+    "II.26.1.1": "II.26",
+    "II.26.2": "II.26",
+    "II.26.3": "II.26",
+    "II.26.4": "II.26",
+    "II.27.1": "II.27",
+    "II.28.1": "II.28",
+    "II.29.2": "II.29",
+        # Добавляйте остальные индексы по мере необходимости
 }
 
 
@@ -182,7 +237,7 @@ def process_special_grouping_for_sub_app(report_file: Path, data: dict, metadata
             "grouping_key": grouping_key,
         })
 
-        if period == 'C':
+        if period in {'C', 'С'}:  # Обрабатываем латинский и кириллический варианты
             folder_name = grouping_key
             extra_metadata = _merge_metadata(extra_metadata, {
                 "tra_sub_folder": folder_name,

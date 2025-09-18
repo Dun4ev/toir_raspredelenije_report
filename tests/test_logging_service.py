@@ -6,8 +6,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from toir_manager.core.logging_models import TransferAction, TransferStatus
 from toir_manager.services.log_reader import list_runs, summarize_entries
 from toir_manager.services.log_writer import DispatchLogger, iter_run_logs
