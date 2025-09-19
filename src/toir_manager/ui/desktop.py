@@ -36,6 +36,117 @@ DESTINATION_CONFIG = (
 DESTINATION_LABELS = {env: name for name, env, _ in DESTINATION_CONFIG}
 PIPELINE_SCRIPT = REPO_ROOT / "toir_raspredelenije.py"
 
+BG_COLOR = "#F4F6F5"
+FRAME_COLOR = "#FFFFFF"
+BUTTON_COLOR = "#4CAF50"
+BUTTON_ACTIVE_COLOR = "#45A049"
+TEXT_COLOR = "#333333"
+DISABLED_TEXT_COLOR = "#AAAAAA"
+STATUS_BAR_COLOR = "#E0E0E0"
+HEADING_BG_COLOR = "#3F8E47"
+SELECTION_COLOR = "#DDEBDD"
+
+FONT_BASE = ("Segoe UI", 9)
+FONT_BOLD = ("Segoe UI", 10, "bold")
+FONT_LABEL = ("Segoe UI", 8)
+
+
+def _configure_theme(root: tk.Tk) -> ttk.Style:
+    """Настроить единый стиль интерфейса в духе toir_tra_report."""
+
+    root.configure(bg=BG_COLOR)
+    root.option_add("*Font", "{Segoe UI} 9")
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+    except tk.TclError:
+        pass
+
+    style.configure("TFrame", background=BG_COLOR)
+    style.configure("Card.TFrame", background=FRAME_COLOR, relief=tk.FLAT)
+    style.configure("TNotebook", background=BG_COLOR, borderwidth=0)
+    style.configure(
+        "TNotebook.Tab",
+        background=FRAME_COLOR,
+        foreground=TEXT_COLOR,
+        padding=(10, 4),
+        font=FONT_LABEL,
+    )
+    style.map(
+        "TNotebook.Tab",
+        background=[("selected", FRAME_COLOR), ("active", FRAME_COLOR)],
+        foreground=[("selected", TEXT_COLOR)],
+    )
+    style.configure(
+        "TButton",
+        background=BUTTON_COLOR,
+        foreground="white",
+        font=FONT_BOLD,
+        padding=(8, 6),
+        bordercolor=BUTTON_COLOR,
+        relief=tk.FLAT,
+    )
+    style.map(
+        "TButton",
+        background=[("active", BUTTON_ACTIVE_COLOR), ("pressed", BUTTON_ACTIVE_COLOR)],
+        foreground=[("active", "white"), ("pressed", "white")],
+    )
+    style.configure(
+        "Status.TLabel",
+        background=STATUS_BAR_COLOR,
+        foreground=TEXT_COLOR,
+        font=FONT_LABEL,
+        padding=(8, 4),
+    )
+    style.configure(
+        "TLabel", background=BG_COLOR, foreground=TEXT_COLOR, font=FONT_BASE
+    )
+    style.configure(
+        "Card.TLabel", background=FRAME_COLOR, foreground=TEXT_COLOR, font=FONT_BASE
+    )
+    style.configure(
+        "Secondary.TLabel",
+        background=BG_COLOR,
+        foreground="#555555",
+        font=FONT_LABEL,
+    )
+    style.configure(
+        "TEntry",
+        fieldbackground=FRAME_COLOR,
+        background=FRAME_COLOR,
+        foreground=TEXT_COLOR,
+        insertcolor=TEXT_COLOR,
+    )
+    style.configure(
+        "Treeview",
+        background=FRAME_COLOR,
+        foreground=TEXT_COLOR,
+        fieldbackground=FRAME_COLOR,
+        rowheight=22,
+        font=FONT_LABEL,
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", SELECTION_COLOR)],
+        foreground=[("selected", TEXT_COLOR)],
+    )
+    style.configure(
+        "Treeview.Heading",
+        background=HEADING_BG_COLOR,
+        foreground="white",
+        font=FONT_BOLD,
+        bordercolor=HEADING_BG_COLOR,
+    )
+    style.map("Treeview.Heading", background=[("active", BUTTON_COLOR)])
+    style.configure(
+        "Vertical.TScrollbar",
+        background=STATUS_BAR_COLOR,
+        troughcolor=FRAME_COLOR,
+        arrowsize=12,
+    )
+
+    return style
+
 
 def _collect_processed_projects(
     entries: Iterable[TransferLogEntry], inbox_path: Path
@@ -210,15 +321,16 @@ def launch(base_dir: Path | None = None) -> None:
     result_queue: queue.Queue[tuple[int, str, str]] = queue.Queue()
 
     root = tk.Tk()
+    _configure_theme(root)
     is_running = tk.BooleanVar(value=False, master=root)
     root.title("ТОиР: распределение и журналы")
     root.geometry("1200x700")
 
-    notebook = ttk.Notebook(root)
-    notebook.pack(fill=tk.BOTH, expand=True)
+    notebook = ttk.Notebook(root, style="TNotebook")
+    notebook.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
     # --- Вкладка "Распределение" ---
-    control_tab = ttk.Frame(notebook, padding=10)
+    control_tab = ttk.Frame(notebook, padding=12, style="TFrame")
     notebook.add(control_tab, text="Распределение")
 
     ttk.Label(control_tab, text="Каталог входных данных").grid(
@@ -278,11 +390,11 @@ def launch(base_dir: Path | None = None) -> None:
         row=2, column=0, sticky=tk.W, pady=(10, 2)
     )
 
-    dest_frame = ttk.Frame(control_tab)
-    dest_frame.grid(row=3, column=0, columnspan=3, sticky=tk.W)
+    dest_frame = ttk.Frame(control_tab, style="Card.TFrame", padding=(8, 8))
+    dest_frame.grid(row=3, column=0, columnspan=3, sticky=tk.EW, pady=(4, 6))
     for name, env_name, default_path in DESTINATION_CONFIG[1:]:
-        row = ttk.Frame(dest_frame)
-        row.pack(fill=tk.X, pady=2)
+        row = ttk.Frame(dest_frame, style="Card.TFrame")
+        row.pack(fill=tk.X, pady=1)
         ttk.Label(row, text=f"{name}:").pack(side=tk.LEFT, padx=(0, 6))
         var = tk.StringVar(value=str(default_path))
         dest_vars[env_name] = var
@@ -301,30 +413,47 @@ def launch(base_dir: Path | None = None) -> None:
         )
 
     status_var = tk.StringVar(value="Готово")
-    ttk.Label(control_tab, textvariable=status_var).grid(
-        row=4, column=0, sticky=tk.W, pady=(10, 0)
+    status_label = ttk.Label(
+        control_tab,
+        textvariable=status_var,
+        style="Status.TLabel",
     )
+    status_label.grid(row=4, column=0, columnspan=3, sticky=tk.EW, pady=(10, 0))
 
     button_frame = ttk.Frame(control_tab)
-    button_frame.grid(row=5, column=0, columnspan=3, sticky=tk.E, pady=(8, 0))
+    button_frame.grid(row=5, column=0, columnspan=3, sticky=tk.E, pady=(6, 0))
 
-    log_frame = ttk.Frame(control_tab)
-    log_frame.grid(row=6, column=0, columnspan=3, sticky=tk.NSEW, pady=(8, 0))
+    log_frame = ttk.Frame(control_tab, style="Card.TFrame", padding=(8, 8))
+    log_frame.grid(row=6, column=0, columnspan=3, sticky=tk.NSEW, pady=(6, 0))
     control_tab.rowconfigure(6, weight=1)
     control_tab.columnconfigure(0, weight=1)
 
-    log_text = tk.Text(log_frame, wrap=tk.WORD, height=18)
+    log_text = tk.Text(
+        log_frame,
+        wrap=tk.WORD,
+        height=15,
+        bg=FRAME_COLOR,
+        fg=TEXT_COLOR,
+        insertbackground=TEXT_COLOR,
+        relief=tk.FLAT,
+        borderwidth=0,
+        highlightthickness=0,
+        font=FONT_LABEL,
+    )
     log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=log_text.yview)
+    log_scroll = ttk.Scrollbar(
+        log_frame,
+        orient="vertical",
+        command=log_text.yview,
+        style="Vertical.TScrollbar",
+    )
     log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
     log_text.configure(yscrollcommand=log_scroll.set)
 
-    log_text.tag_config("info", foreground="#222222")
-    log_text.tag_config("stdout", foreground="#176f34")
-    log_text.tag_config("stderr", foreground="#bb1d1d")
-    log_text.tag_config(
-        "status", foreground="#124b8a", font=("TkDefaultFont", 9, "bold")
-    )
+    log_text.tag_config("info", foreground=TEXT_COLOR)
+    log_text.tag_config("stdout", foreground="#2E7D32")
+    log_text.tag_config("stderr", foreground="#C62828")
+    log_text.tag_config("status", foreground="#1B5E20", font=FONT_BOLD)
 
     def append_log(message: str, tag: str = "info") -> None:
         if not message:
@@ -417,7 +546,7 @@ def launch(base_dir: Path | None = None) -> None:
                 "Распределение", f"Скрипт завершился с кодом {returncode}."
             )
         run_button.config(state=tk.NORMAL)
-        cancel_button.config(state=tk.DISABLED)
+        reset_button.config(state=tk.NORMAL)
         cleanup_button.config(state=tk.NORMAL)
         is_running.set(False)
         root.after(200, handle_queue)
@@ -442,7 +571,7 @@ def launch(base_dir: Path | None = None) -> None:
         status_var.set("Выполняется...")
         append_log(f"Запуск распределения для {inbox_path}\n\n")
         run_button.config(state=tk.DISABLED)
-        cancel_button.config(state=tk.DISABLED)
+        reset_button.config(state=tk.DISABLED)
         cleanup_button.config(state=tk.DISABLED)
         is_running.set(True)
         thread = threading.Thread(
@@ -450,46 +579,69 @@ def launch(base_dir: Path | None = None) -> None:
         )
         thread.start()
 
-    def cancel_distribution() -> None:
-        messagebox.showinfo(
-            "Отмена", "Остановка выполняется по завершении текущего запуска."
-        )
+    def reset_paths_to_defaults() -> None:
+        if is_running.get():
+            messagebox.showinfo(
+                "Сброс путей",
+                "Дождитесь завершения обработки перед сбросом настроек.",
+            )
+            return
+        for _, env_name, default_path in DESTINATION_CONFIG:
+            dest_vars[env_name].set(str(default_path))
+        status_var.set("Пути сброшены на значения по умолчанию")
+        append_log("Сброс путей на значения по умолчанию\n", tag="status")
 
     run_button = ttk.Button(
         button_frame, text="Распределить", command=start_distribution
     )
     run_button.pack(side=tk.RIGHT, padx=(4, 0))
 
-    cancel_button = ttk.Button(
-        button_frame, text="Отмена", command=cancel_distribution, state=tk.DISABLED
+    reset_button = ttk.Button(
+        button_frame,
+        text="Сбросить пути",
+        command=reset_paths_to_defaults,
     )
-    cancel_button.pack(side=tk.RIGHT, padx=(4, 0))
+    reset_button.pack(side=tk.RIGHT, padx=(4, 0))
 
     ttk.Button(button_frame, text="Очистить лог", command=clear_log).pack(
         side=tk.RIGHT, padx=(4, 0)
     )
 
     # --- Вкладка "Журналы" ---
-    logs_tab = ttk.Frame(notebook, padding=10)
+    logs_tab = ttk.Frame(notebook, padding=12, style="TFrame")
     notebook.add(logs_tab, text="Журналы")
 
-    list_frame = ttk.Frame(logs_tab)
-    list_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+    list_frame = ttk.Frame(logs_tab, style="Card.TFrame", padding=(8, 8))
+    list_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
 
-    ttk.Label(list_frame, text="Запуски").pack(anchor=tk.W)
-    run_listbox = tk.Listbox(list_frame, height=15, exportselection=False)
+    ttk.Label(list_frame, text="Запуски", style="Card.TLabel").pack(anchor=tk.W)
+    run_listbox = tk.Listbox(
+        list_frame,
+        height=13,
+        exportselection=False,
+        bg=FRAME_COLOR,
+        fg=TEXT_COLOR,
+        selectbackground=BUTTON_COLOR,
+        selectforeground="white",
+        highlightthickness=0,
+        borderwidth=0,
+        relief=tk.FLAT,
+        font=FONT_LABEL,
+    )
     run_listbox.pack(fill=tk.BOTH, expand=True)
 
     refresh_button = ttk.Button(list_frame, text="Обновить")
-    refresh_button.pack(fill=tk.X, pady=(8, 0))
+    refresh_button.pack(fill=tk.X, pady=(6, 0))
 
     summary_var = tk.StringVar(value="Журналы не найдены")
-    ttk.Label(list_frame, textvariable=summary_var).pack(anchor=tk.W, pady=(8, 0))
+    ttk.Label(list_frame, textvariable=summary_var, style="Secondary.TLabel").pack(
+        anchor=tk.W, pady=(6, 0)
+    )
 
-    tree_frame = ttk.Frame(logs_tab)
+    tree_frame = ttk.Frame(logs_tab, style="Card.TFrame", padding=(8, 8))
     tree_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-    tree_container = ttk.Frame(tree_frame)
+    tree_container = ttk.Frame(tree_frame, style="Card.TFrame")
     tree_container.pack(fill=tk.BOTH, expand=True)
 
     columns = ("time", "action", "status", "source", "target", "message")
@@ -519,15 +671,20 @@ def launch(base_dir: Path | None = None) -> None:
         tree.heading(col, text=headings[col])
         tree.column(col, width=widths[col], anchor=tk.W)
 
-    tree_scroll = ttk.Scrollbar(tree_container, orient="vertical", command=tree.yview)
+    tree_scroll = ttk.Scrollbar(
+        tree_container,
+        orient="vertical",
+        command=tree.yview,
+        style="Vertical.TScrollbar",
+    )
     tree_scroll.grid(row=0, column=1, sticky="ns")
     tree.configure(yscrollcommand=tree_scroll.set)
 
     tree_container.columnconfigure(0, weight=1)
     tree_container.rowconfigure(0, weight=1)
 
-    tree_toolbar = ttk.Frame(tree_frame)
-    tree_toolbar.pack(fill=tk.X, pady=(8, 0))
+    tree_toolbar = ttk.Frame(tree_frame, style="TFrame")
+    tree_toolbar.pack(fill=tk.X, pady=(6, 0))
 
     current_entries: list[TransferLogEntry] = []
 
