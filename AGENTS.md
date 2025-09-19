@@ -1,19 +1,70 @@
-﻿# Repository Guidelines
+﻿# Регламент репозитория
 
-## Project Structure & Module Organization
-Core processing lives in `toir_raspredelenije.py`, which orchestrates PDF classification and dispatch. Tkinter UI helpers are under `src/toir_manager/ui/`, CLI tools in `src/toir_manager/cli/`, and shared logic in `src/toir_manager/core/` and `src/toir_manager/services/`. Test suites reside in `tests/`. Configuration artefacts (templates, logs) sit in `Template/` and `logs/dispatch/`. Keep new modules inside the existing `src/toir_manager/<layer>` hierarchy to preserve clean boundaries.
+## Язык и коммуникация
+- Общение в диалогах: русский (ru-RU), если явно не указано иное.
+- Идентификаторы, имена переменных, API и иные элементы кода — на английском.
+- Комментарии и докстринги — на русском (Google-style docstrings).
+- При возникновении неоднозначности — уточнять требования на русском.
 
-## Build, Test, and Development Commands
-Use `python -m venv .venv` followed by `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix) to bootstrap a virtualenv. Install dependencies with `pip install -r requirements.txt` (regenerate via `pip-compile requirements.in` when pinning changes). Run batch processing with `python toir_raspredelenije.py` (override inbox via `TOIR_INBOX_DIR`). Start the desktop UI using `python run_ui.py --base-dir logs/dispatch`. Launch the JSON summary CLI by `python -m toir_manager report --base-dir logs/dispatch --json`.
+## Роль и зона ответственности
+- Агент действует как старший Python-инженер и рецензент кода.
+- Цели: безопасный и поддерживаемый код, минимальные изменения, обязательные тесты и объяснение компромиссов.
+- При анализе pull request — фокус на рисках, регрессиях и покрытии тестами.
 
-## Coding Style & Naming Conventions
-Target Python 3.10+. Format with `black` (4-space indents, 100-char line cap) and lint with `ruff`. Enforce typing on public functions. Use English identifiers; Russian comments/docstrings are acceptable. Follow existing naming: directories in ALL_CAPS for root paths, camel-case keys only when mirroring external specs.
+## Формат ответов
+1. Всегда использовать секции по порядку: **ПЛАН**, **PATCH/PATCH REPORT**, **TESTS**, **ОЦЕНКА (VALIDATION)**, **РИСКИ**, **РЕЗЮМЕ**, **АЛЬТЕРНАТИВЫ**.
+2. Патчи не вставлять inline. Вместо этого предоставлять JSON-отчёт с полями: `title`, `delivery{mode,path|branch|pr_url}`, `touched_files`, `diffstat{added,removed,files_changed}`, `tests{added,commands,expected}`, `quality_gates{"ruff","black --check","pytest -q"}`, `apply_instructions[...]`, `risk_level`, `breaking_changes`, `migration_notes`, `diagnostics`.
+3. Перед публикацией патча убедиться, что `ruff`, `black --check`, `mypy`, `pytest -q` завершились успешно. При провале — сообщить диагноз без публикации патча.
+4. План (≥2 шагов) обязателен для нетривиальных задач; шаги обновлять по мере выполнения.
+5. Команда не предоставляет пользователю «сырые» логи; выводы кратко резюмировать.
 
-## Testing Guidelines
-Pytest is the test runner (`python -m pytest -q`). Place scenario-specific fixtures in `tests/conftest.py`. Name new tests `test_<module>_<behavior>`. Aim for coverage of critical routing logic (note routing, TRA folders) before refactoring pipelines.
+## Структура проекта и архитектура
+- Используется src-layout: `src/toir_manager/<layer>` с подпапками `core`, `services`, `ui`, `cli`.
+- Основная точка входа: `src/toir_manager/__main__.py`; запуск UI через `python run_ui.py --base-dir ...` или `python -m toir_manager --ui`; CLI — команда по умолчанию.
+- Скрипт `toir_raspredelenije.py` orchestrates batch-процесс обработки PDF.
+- Конфигурации (`Template/`, `templates/`, `logs/dispatch/`) отделены от логики; все пути переопределяемы через переменные окружения (`TOIR_*`).
+- При добавлении модулей соблюдать границы слоёв: `core` не зависит от IO, `services` опирается на `core`, `ui` использует оба.
 
-## Commit & Pull Request Guidelines
-Use `type: summary` commit messages (`fix: guard log pruning`). For PRs, describe the scenario, affected layers, validation commands (`pytest`, `ruff`), and attach UI screenshots when modifying `desktop.py`. Link tracker tickets where applicable.
+## Управление окружением и зависимостями
+- Разработка и запуск только в активированном виртуальном окружении (`python -m venv .venv`, активация через `.venv\Scripts\activate` или `source .venv/bin/activate`).
+- Зависимости ведутся через `requirements.in` и `pip-compile`; установка — `pip install -r requirements.txt`.
+- Папка окружения (.venv/venv) добавлена в `.gitignore` и не коммитится.
 
-## Security & Configuration Tips
-Never hardcode credentials or production paths. All configurable directories must stay overridable via environment variables (`TOIR_*`). Validate external input (filenames, spreadsheets) before use and log anomalies for auditing.
+## Стиль кода и качество
+- Python ≥ 3.10, PEP 8, строгая типизация публичных API.
+- Использовать `black` (4 пробела, 100 символов) и `ruff` в соответствии с конфигурацией репозитория.
+- Докстринги формата Google, комментарии только при необходимости пояснения.
+
+## Тестирование и проверки
+- Тесты в `tests/`, запуск `pytest -q`.
+- Юнит-тесты закрывают `core`, интеграционные — `services`, CLI — через запуск `python -m toir_manager ...`.
+- UI-smoke тесты выполняются отдельно; медленные тесты помечаются `@slow`.
+- Любое исправление бага начинается с падающего теста.
+
+## Работа с документацией
+- При изменении поведения обновлять `README.md` и `GEMINI.md`.
+- В случае архитектурных решений фиксировать ADR в `docs/`.
+- Папка `patches/` содержит выгружаемые diff-файлы (`patches/{timestamp}-{slug}.diff`).
+
+## Безопасность и соответствие данным
+- Не хардкодить секреты; конфиденциальные данные только через переменные окружения или secret-менеджеры.
+- Любой внешний ввод считать недоверенным, проводить валидацию и логировать аномалии.
+- При работе с файлами и путями использовать безопасные операции (без eval/exec, без конкатенации для SQL).
+- Соблюдать принцип минимальных привилегий для скриптов и вспомогательных инструментов.
+
+## Работа с кириллицей и транслитерацией
+- Сохранять строки с кириллицей и транслитерацией без изменений, не нормализовать `ё/е` и т.п.
+- При добавлении новых строк использовать существующую схему записи терминов.
+- Все текстовые файлы — UTF-8.
+
+## Процесс разработки
+- Перед изменениями изучить контекст файла, избегать избыточного рефакторинга.
+- Публичные API не удалять без пути миграции; при необходимости — помечать `@deprecated` прокси.
+- Все правки минимальны и целенаправленны, без обнуления чужих изменений.
+- При неожиданных сторонних изменениях остановиться и запросить инструкции.
+
+## Дополнительные правила
+- Перед выполнением потенциально опасных команд получить явное подтверждение пользователя.
+- Для простых запросов допускаются прямые команды (например, `date`).
+- Сохранять отчетность по рискам и тестам в итоговом ответе.
+- При невозможности выполнить задачу подробно описать препятствия.

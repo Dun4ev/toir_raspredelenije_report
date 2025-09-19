@@ -1,6 +1,7 @@
 ﻿"""
 CLI-команда для чтения журналов копирования PDF.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,15 +59,20 @@ def render_runs_table(base_dir: Path) -> int:
 
     print("Доступные запуски:")
     print("run_id           | started_at          | records | путь")
-    print("-----------------+---------------------+---------+---------------------------")
+    print(
+        "-----------------+---------------------+---------+---------------------------"
+    )
     for info in runs:
         print(
             f"{info.run_id:<16} | {info.started_at:%Y-%m-%d %H:%M:%S} | "
-            f"{info.total_records:7d} | {info.file_path}")
+            f"{info.total_records:7d} | {info.file_path}"
+        )
     return 0
 
 
-def render_run_summary(base_dir: Path, run_id: str | None, show_details: bool, as_json: bool) -> int:
+def render_run_summary(
+    base_dir: Path, run_id: str | None, show_details: bool, as_json: bool
+) -> int:
     """Вывести суммарную статистику по запуску."""
 
     if not run_id:

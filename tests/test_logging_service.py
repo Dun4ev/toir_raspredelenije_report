@@ -1,6 +1,7 @@
 ﻿"""
 Юнит-тесты для сервиса журналирования.
 """
+
 from __future__ import annotations
 
 import json

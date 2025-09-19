@@ -5,11 +5,17 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-from toir_manager.core.logging_models import TransferAction, TransferLogEntry, TransferStatus
+from toir_manager.core.logging_models import (
+    TransferAction,
+    TransferLogEntry,
+    TransferStatus,
+)
 from toir_manager.ui.desktop import _collect_processed_projects
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
 
 def test_path_env_overrides(monkeypatch, tmp_path):
     """Проверяет чтение каталогов из переменных окружения."""
@@ -42,66 +48,66 @@ def test_path_env_overrides(monkeypatch, tmp_path):
 def test_collect_processed_projects(tmp_path):
     """Папки с ошибками или из других каталогов не попадают в очистку."""
 
-    inbox = tmp_path / 'inbox'
+    inbox = tmp_path / "inbox"
     inbox.mkdir()
-    project_ok = inbox / 'project_ok'
+    project_ok = inbox / "project_ok"
     project_ok.mkdir()
-    project_fail = inbox / 'project_fail'
+    project_fail = inbox / "project_fail"
     project_fail.mkdir()
 
-    other_inbox = tmp_path / 'other'
-    other_project = other_inbox / 'project_other'
+    other_inbox = tmp_path / "other"
+    other_project = other_inbox / "project_other"
 
     timestamp = datetime(2025, 1, 1, 0, 0, 0)
 
     entries = [
         TransferLogEntry(
             timestamp=timestamp,
-            run_id='run',
+            run_id="run",
             action=TransferAction.COPY_DESTINATION,
             status=TransferStatus.SUCCESS,
-            source_path=project_ok / 'file1.pdf',
-            target_path=project_ok / 'dest.pdf',
+            source_path=project_ok / "file1.pdf",
+            target_path=project_ok / "dest.pdf",
         ),
         TransferLogEntry(
             timestamp=timestamp,
-            run_id='run',
+            run_id="run",
             action=TransferAction.COPY_GST,
             status=TransferStatus.SUCCESS,
-            source_path=project_ok / 'file2.pdf',
-            target_path=project_ok / 'gst.pdf',
+            source_path=project_ok / "file2.pdf",
+            target_path=project_ok / "gst.pdf",
         ),
         TransferLogEntry(
             timestamp=timestamp,
-            run_id='run',
+            run_id="run",
             action=TransferAction.COPY_NOTES,
             status=TransferStatus.SUCCESS,
-            source_path=project_fail / 'file.pdf',
-            target_path=project_fail / 'notes.pdf',
+            source_path=project_fail / "file.pdf",
+            target_path=project_fail / "notes.pdf",
         ),
         TransferLogEntry(
             timestamp=timestamp,
-            run_id='run',
+            run_id="run",
             action=TransferAction.COPY_NOTES,
             status=TransferStatus.ERROR,
-            source_path=project_fail / 'file.pdf',
-            target_path=project_fail / 'notes.pdf',
-            message='fail',
+            source_path=project_fail / "file.pdf",
+            target_path=project_fail / "notes.pdf",
+            message="fail",
         ),
         TransferLogEntry(
             timestamp=timestamp,
-            run_id='run',
+            run_id="run",
             action=TransferAction.COPY_DESTINATION,
             status=TransferStatus.SUCCESS,
-            source_path=other_project / 'file.pdf',
-            target_path=other_project / 'dest.pdf',
+            source_path=other_project / "file.pdf",
+            target_path=other_project / "dest.pdf",
         ),
         TransferLogEntry(
             timestamp=timestamp,
-            run_id='run',
+            run_id="run",
             action=TransferAction.COPY_DESTINATION,
             status=TransferStatus.SUCCESS,
-            source_path=(inbox / 'missing') / 'file.pdf',
+            source_path=(inbox / "missing") / "file.pdf",
             target_path=None,
         ),
     ]

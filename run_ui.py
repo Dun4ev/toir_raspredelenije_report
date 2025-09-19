@@ -1,6 +1,7 @@
 ﻿"""
 Простая точка входа для запуска Tkinter UI без настройки PYTHONPATH.
 """
+
 from __future__ import annotations
 
 import argparse

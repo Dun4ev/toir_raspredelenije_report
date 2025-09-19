@@ -1,6 +1,7 @@
 ﻿"""
 Сервисы для записи и чтения журналов копирования.
 """
+
 from __future__ import annotations
 
 import json
@@ -129,6 +130,7 @@ def iter_logs(base_dir: Path | None = None) -> Iterator[TransferLogEntry]:
         return iter(())
 
     files = sorted(root.glob("*.jsonl"))
+
     def generator() -> Iterator[TransferLogEntry]:
         for file_path in files:
             with file_path.open(encoding="utf-8") as handler:
@@ -141,10 +143,13 @@ def iter_logs(base_dir: Path | None = None) -> Iterator[TransferLogEntry]:
                     except json.JSONDecodeError:
                         continue
                     yield TransferLogEntry.from_json(payload)
+
     return generator()
 
 
-def iter_run_logs(run_id: str, base_dir: Path | None = None) -> Iterator[TransferLogEntry]:
+def iter_run_logs(
+    run_id: str, base_dir: Path | None = None
+) -> Iterator[TransferLogEntry]:
     """Вернуть итератор по конкретному файлу запуска."""
 
     root = (base_dir or Path("logs") / "dispatch").resolve()
@@ -163,6 +168,7 @@ def iter_run_logs(run_id: str, base_dir: Path | None = None) -> Iterator[Transfe
                 except json.JSONDecodeError:
                     continue
                 yield TransferLogEntry.from_json(payload)
+
     return generator()
 
 

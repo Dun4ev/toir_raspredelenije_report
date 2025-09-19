@@ -1,6 +1,7 @@
 ﻿"""
 Главная точка входа для CLI/UI утилит распределения.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,7 +51,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv[1:])
         if os.environ.get("APP_HEADLESS") == "1":
             raise RuntimeError("GUI запрещён при APP_HEADLESS=1")
-        from toir_manager.ui import desktop as desktop_ui  # локальный импорт, чтобы не требовать PySimpleGUI для CLI
+        from toir_manager.ui import (
+            desktop as desktop_ui,
+        )  # локальный импорт, чтобы не требовать PySimpleGUI для CLI
+
         desktop_ui.launch(base_dir=args.base_dir)
         return 0
 

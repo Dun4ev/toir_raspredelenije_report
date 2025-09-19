@@ -1,6 +1,7 @@
 ﻿"""
 Чтение и агрегация журналов копирования.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -41,7 +42,14 @@ def list_runs(base_dir: Path | None = None) -> list[RunInfo]:
                 first_entry = entry
         if first_entry is None:
             continue
-        result.append(RunInfo(run_id=run_id, file_path=path, started_at=first_entry.timestamp, total_records=total))
+        result.append(
+            RunInfo(
+                run_id=run_id,
+                file_path=path,
+                started_at=first_entry.timestamp,
+                total_records=total,
+            )
+        )
     return result
 
 

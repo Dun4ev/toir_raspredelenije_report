@@ -1,6 +1,7 @@
 ﻿"""
 Структуры данных для журналирования операций копирования.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -65,7 +66,9 @@ class TransferLogEntry:
             action=TransferAction(payload["action"]),
             status=TransferStatus(payload["status"]),
             source_path=Path(payload["source_path"]),
-            target_path=Path(payload["target_path"]) if payload.get("target_path") else None,
+            target_path=(
+                Path(payload["target_path"]) if payload.get("target_path") else None
+            ),
             message=payload.get("message", ""),
             metadata=payload.get("metadata", {}),
         )
