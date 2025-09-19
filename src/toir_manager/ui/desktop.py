@@ -40,6 +40,12 @@ BG_COLOR = "#F4F6F5"
 FRAME_COLOR = "#FFFFFF"
 BUTTON_COLOR = "#4CAF50"
 BUTTON_ACTIVE_COLOR = "#45A049"
+BUTTON_PRIMARY_COLOR = "#1E88E5"
+BUTTON_PRIMARY_ACTIVE_COLOR = "#1565C0"
+BUTTON_DANGER_COLOR = "#E53935"
+BUTTON_DANGER_ACTIVE_COLOR = "#C62828"
+BUTTON_SECONDARY_COLOR = "#607D8B"
+BUTTON_SECONDARY_ACTIVE_COLOR = "#546E7A"
 TEXT_COLOR = "#333333"
 DISABLED_TEXT_COLOR = "#AAAAAA"
 STATUS_BAR_COLOR = "#E0E0E0"
@@ -91,6 +97,26 @@ def _configure_theme(root: tk.Tk) -> ttk.Style:
         background=[("active", BUTTON_ACTIVE_COLOR), ("pressed", BUTTON_ACTIVE_COLOR)],
         foreground=[("active", "white"), ("pressed", "white")],
     )
+    button_variants = (
+        ("Primary", BUTTON_PRIMARY_COLOR, BUTTON_PRIMARY_ACTIVE_COLOR),
+        ("Danger", BUTTON_DANGER_COLOR, BUTTON_DANGER_ACTIVE_COLOR),
+        ("Secondary", BUTTON_SECONDARY_COLOR, BUTTON_SECONDARY_ACTIVE_COLOR),
+    )
+    for variant, color, active in button_variants:
+        style.configure(
+            f"{variant}.TButton",
+            background=color,
+            foreground="white",
+            font=FONT_BOLD,
+            padding=(8, 6),
+            bordercolor=color,
+            relief=tk.FLAT,
+        )
+        style.map(
+            f"{variant}.TButton",
+            background=[("active", active), ("pressed", active)],
+            foreground=[("active", "white"), ("pressed", "white")],
+        )
     style.configure(
         "Status.TLabel",
         background=STATUS_BAR_COLOR,
@@ -246,10 +272,18 @@ def _confirm_cleanup_dialog(
 
     button_frame = ttk.Frame(frame)
     button_frame.pack(fill=tk.X)
-    ttk.Button(button_frame, text="Удалить", command=on_confirm).pack(
-        side=tk.RIGHT, padx=(8, 0)
-    )
-    ttk.Button(button_frame, text="Отмена", command=on_cancel).pack(side=tk.RIGHT)
+    ttk.Button(
+        button_frame,
+        text="Удалить",
+        command=on_confirm,
+        style="Danger.TButton",
+    ).pack(side=tk.RIGHT, padx=(8, 0))
+    ttk.Button(
+        button_frame,
+        text="Отмена",
+        command=on_cancel,
+        style="Secondary.TButton",
+    ).pack(side=tk.RIGHT)
 
     dialog.bind("<Return>", lambda _event: on_confirm())
     dialog.bind("<Escape>", lambda _event: on_cancel())
@@ -508,7 +542,10 @@ def launch(base_dir: Path | None = None) -> None:
             messagebox.showinfo("Очистка INBOX", f"Удалено папок: {removed}")
 
     cleanup_button = ttk.Button(
-        button_frame, text="Удалить обработанные", command=cleanup_processed_projects
+        button_frame,
+        text="Удалить обработанные",
+        command=cleanup_processed_projects,
+        style="Danger.TButton",
     )
     cleanup_button.pack(side=tk.LEFT, padx=(0, 12))
 
@@ -592,7 +629,10 @@ def launch(base_dir: Path | None = None) -> None:
         append_log("Сброс путей на значения по умолчанию\n", tag="status")
 
     run_button = ttk.Button(
-        button_frame, text="Распределить", command=start_distribution
+        button_frame,
+        text="Распределить",
+        command=start_distribution,
+        style="Primary.TButton",
     )
     run_button.pack(side=tk.RIGHT, padx=(4, 0))
 
@@ -600,6 +640,7 @@ def launch(base_dir: Path | None = None) -> None:
         button_frame,
         text="Сбросить пути",
         command=reset_paths_to_defaults,
+        style="Secondary.TButton",
     )
     reset_button.pack(side=tk.RIGHT, padx=(4, 0))
 
@@ -717,7 +758,11 @@ def launch(base_dir: Path | None = None) -> None:
 
     refresh_button.config(command=refresh_runs)
 
-    delete_button = ttk.Button(list_frame, text="Удалить все кроме последнего")
+    delete_button = ttk.Button(
+        list_frame,
+        text="Удалить все кроме последнего",
+        style="Danger.TButton",
+    )
     delete_button.pack(fill=tk.X, pady=(4, 0))
 
     def delete_old_runs() -> None:
