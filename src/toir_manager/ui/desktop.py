@@ -19,6 +19,7 @@ from typing import Callable, Iterable
 from toir_manager.core.logging_models import TransferLogEntry, TransferStatus
 from toir_manager.services.log_reader import list_runs, summarize_entries
 from toir_manager.services.log_writer import iter_run_logs
+from toir_manager.services.settings_store import load_ui_paths, save_ui_paths
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -376,12 +377,30 @@ def launch(base_dir: Path | None = None) -> None:
 
     dest_vars: dict[str, tk.StringVar] = {"TOIR_INBOX_DIR": inbox_var}
 
+    saved_paths = load_ui_paths()
+    saved_inbox = saved_paths.get("TOIR_INBOX_DIR") if saved_paths else None
+    if saved_inbox:
+        inbox_var.set(saved_inbox)
+
+    def collect_current_paths() -> dict[str, str]:
+        """Считать текущие пути из полей ввода."""
+        return {env: var.get().strip() for env, var in dest_vars.items()}
+
+    def persist_paths() -> None:
+        """Сохранить выбранные пользователем пути на диск."""
+        paths_snapshot = collect_current_paths()
+        try:
+            save_ui_paths(paths_snapshot)
+        except OSError as exc:
+            append_log(f"[settings] Ошибка сохранения путей: {exc}\n", tag="stderr")
+
     def select_directory(target_var: tk.StringVar, fallback: Path) -> None:
         """Выбрать каталог через диалог и обновить поле."""
 
         selected = filedialog.askdirectory(initialdir=target_var.get() or str(fallback))
         if selected:
             target_var.set(selected)
+            persist_paths()
 
     def open_directory(target_var: tk.StringVar) -> None:
         """Открыть каталог, указанный в поле."""
@@ -432,6 +451,9 @@ def launch(base_dir: Path | None = None) -> None:
         ttk.Label(row, text=f"{name}:").pack(side=tk.LEFT, padx=(0, 6))
         var = tk.StringVar(value=str(default_path))
         dest_vars[env_name] = var
+        saved_value = saved_paths.get(env_name) if saved_paths else None
+        if saved_value:
+            var.set(saved_value)
         ttk.Entry(row, textvariable=var, width=68).pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
@@ -599,11 +621,14 @@ def launch(base_dir: Path | None = None) -> None:
                 messagebox.showerror("Ошибка", f"Укажите путь для {label}.")
                 return
             resolved = Path(raw_value).expanduser()
-            overrides[env_name] = str(resolved)
+            resolved_str = str(resolved)
+            overrides[env_name] = resolved_str
+            dest_vars[env_name].set(resolved_str)
         inbox_path = Path(overrides["TOIR_INBOX_DIR"])
         if not inbox_path.exists():
             messagebox.showerror("Ошибка", f"Папка не найдена: {inbox_path}")
             return
+        persist_paths()
         clear_log()
         status_var.set("Выполняется...")
         append_log(f"Запуск распределения для {inbox_path}\n\n")
@@ -627,6 +652,7 @@ def launch(base_dir: Path | None = None) -> None:
             dest_vars[env_name].set(str(default_path))
         status_var.set("Пути сброшены на значения по умолчанию")
         append_log("Сброс путей на значения по умолчанию\n", tag="status")
+        persist_paths()
 
     run_button = ttk.Button(
         button_frame,
@@ -854,6 +880,18 @@ def launch(base_dir: Path | None = None) -> None:
 
     refresh_runs()
     root.after(200, handle_queue)
+
+    def on_close() -> None:
+        try:
+            persist_paths()
+        except Exception as exc:
+            append_log(
+                f"[settings] Ошибка при сохранении перед выходом: {exc}\n", tag="stderr"
+            )
+        finally:
+            root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
 
     try:
         root.mainloop()
