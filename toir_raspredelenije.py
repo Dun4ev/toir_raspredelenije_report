@@ -354,9 +354,37 @@ def process_special_grouping_for_sub_app(
                 },
             )
 
-        dest_dir = TRA_SUB_APP_DIR / folder_name
-        dest_dir.mkdir(exist_ok=True)
-        print(f"    - Создан целевой каталог: {dest_dir}")
+        base_dest_dir = TRA_SUB_APP_DIR
+        date_str = data.get("date")
+        year_dir: str | None = None
+        month_folder_name: str | None = None
+
+        if date_str:
+            parsed_date: datetime | None = None
+            try:
+                parsed_date = datetime.strptime(date_str, "%Y%m%d")
+            except (ValueError, TypeError):
+                parsed_date = None
+
+            if parsed_date is not None:
+                year_dir = parsed_date.strftime("%Y")
+                month_num = parsed_date.strftime("%m")
+                month_name = MONTH_MAP.get(month_num, "UnknownMonth")
+                month_folder_name = f"{month_num}.{month_name}"
+
+        if year_dir and month_folder_name:
+            base_dest_dir = base_dest_dir / year_dir / month_folder_name
+            extra_metadata = _merge_metadata(
+                extra_metadata,
+                {
+                    "tra_sub_year": year_dir,
+                    "tra_sub_month": month_folder_name,
+                },
+            )
+
+        dest_dir = base_dest_dir / folder_name
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        print(f"    - ?????? ???????: {dest_dir}")
         shutil.copy(report_file, dest_dir)
         _log_success(
             TransferAction.COPY_TRA_SUB,
