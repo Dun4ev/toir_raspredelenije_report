@@ -500,12 +500,18 @@ def launch(base_dir: Path | None = None) -> None:
             side=tk.LEFT, fill=tk.X, expand=True
         )
         ttk.Button(
-            row, text="???????...", command=make_select_callback(var, default_path)
+            row,
+            text="Выбрать...",
+            command=make_select_callback(var, default_path),
         ).pack(
             side=tk.LEFT,
             padx=(4, 0),
         )
-        ttk.Button(row, text="???????", command=make_open_callback(var)).pack(
+        ttk.Button(
+            row,
+            text="Открыть",
+            command=make_open_callback(var),
+        ).pack(
             side=tk.LEFT,
             padx=(4, 0),
         )
@@ -668,7 +674,7 @@ def launch(base_dir: Path | None = None) -> None:
             needs_path = flag_env is None or enabled
             if needs_path and not raw_value:
                 label = DESTINATION_LABELS.get(env_name, env_name)
-                messagebox.showerror("??????", f"??????? ???? ??? {label}.")
+                messagebox.showerror("Ошибка", f"Укажите путь для {label}.")
                 return
             if raw_value:
                 resolved = Path(raw_value).expanduser()
