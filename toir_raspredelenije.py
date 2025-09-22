@@ -77,6 +77,24 @@ def _override_path(default: Path, env_name: str) -> Path:
         return candidate
 
 
+BOOL_TRUE_VALUES = {"1", "true", "yes", "on"}
+BOOL_FALSE_VALUES = {"0", "false", "no", "off"}
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """?????????? ????? ???? ?? ?????????? ?????????."""
+
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in BOOL_TRUE_VALUES:
+        return True
+    if normalized in BOOL_FALSE_VALUES:
+        return False
+    return default
+
+
 INBOX_DIR = _override_path(INBOX_DIR, "TOIR_INBOX_DIR")
 NOTES_DIR = _override_path(NOTES_DIR, "TOIR_NOTES_DIR")
 TRA_GST_DIR = _override_path(TRA_GST_DIR, "TOIR_TRA_GST_DIR")
@@ -562,77 +580,26 @@ def process_project_folder(project_path: Path) -> None:
         if v
     }
 
+    notes_enabled = _env_flag("TOIR_ENABLE_NOTES", True)
+    tra_gst_enabled = _env_flag("TOIR_ENABLE_TRA_GST", True)
+    tra_sub_app_enabled = _env_flag("TOIR_ENABLE_TRA_SUB_APP", True)
+    dest_root_enabled = _env_flag("TOIR_ENABLE_DEST_ROOT", True)
+
     pdf_dest_dir: Path | None = None
     archive_dest_dir: Path | None = None
 
-    if period == "C":
-        print("  - [Инфо] Рабочий режим: еженедельный (C).")
-        target_folder_name = "Корректирующее обслуживание"
-        pdf_dest_dir = (
-            DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / target_folder_name
-        )
-        archive_dest_dir = (
-            DEST_ROOT_DIR
-            / year
-            / month_folder_name
-            / part
-            / "Native"
-            / target_folder_name
-        )
-    else:
-        print("  - [Инфо] Рабочий режим: стандартный.")
-        if part == "LP":
-            print("  - [Инфо] Раздел LP.")
-            object_name_raw = data["object_name"].upper()
-            object_name = normalize_object_name(object_name_raw)
-            folder_name = LP_FOLDER_OVERRIDES.get(object_name, object_name)
-            if folder_name != object_name:
-                print(
-                    f"  - [Инфо] Используем сопоставление LP: {object_name} → {folder_name}"
-                )
+    if dest_root_enabled:
+        if period == "C":
+            print("  - [Инфо] Рабочий режим: еженедельный (C).")
+            target_folder_name = "Корректирующее обслуживание"
             pdf_dest_dir = (
-                DEST_ROOT_DIR / year / month_folder_name / part / "pdf" / folder_name
+                DEST_ROOT_DIR
+                / year
+                / month_folder_name
+                / part
+                / "pdf"
+                / target_folder_name
             )
-            archive_dest_dir = (
-                DEST_ROOT_DIR / year / month_folder_name / part / "Native" / folder_name
-            )
-            base_metadata = _merge_metadata(
-                base_metadata,
-                {"destination_folder": folder_name, "destination_prefix": folder_name},
-            )
-        elif part == "CS":
-            print("  - [Инфо] Раздел CS.")
-            tz_index = data["tz_index"]
-            base_metadata = _merge_metadata(base_metadata, {"tz_index": tz_index})
-
-            folder_prefix = CS_FOLDER_OVERRIDES.get(tz_index, tz_index)
-            if folder_prefix != tz_index:
-                print(f"  - [Инфо] Используем префикс из справочника: {folder_prefix}")
-
-            base_search_dir = DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
-            base_search_dir.mkdir(parents=True, exist_ok=True)
-
-            found_folders = list(base_search_dir.glob(f"{folder_prefix}*"))
-            if not found_folders:
-                message = (
-                    f"Не найдена папка по индексу {folder_prefix} в {base_search_dir}"
-                )
-                print(f"  - [Ошибка] {message}")
-                _log_error(
-                    TransferAction.COPY_DESTINATION,
-                    report_file,
-                    None,
-                    message,
-                    base_metadata,
-                )
-                return
-            if len(found_folders) > 1:
-                print(
-                    f"  - [Внимание] Несколько совпадений, берём {found_folders[0].name}"
-                )
-
-            target_folder_name = found_folders[0].name
-            pdf_dest_dir = base_search_dir / target_folder_name
             archive_dest_dir = (
                 DEST_ROOT_DIR
                 / year
@@ -641,15 +608,94 @@ def process_project_folder(project_path: Path) -> None:
                 / "Native"
                 / target_folder_name
             )
-            base_metadata = _merge_metadata(
-                base_metadata,
-                {
-                    "destination_folder": target_folder_name,
-                    "destination_prefix": folder_prefix,
-                },
-            )
+        else:
+            print("  - [Инфо] Рабочий режим: стандартный.")
+            if part == "LP":
+                print("  - [Инфо] Раздел LP.")
+                object_name_raw = data["object_name"].upper()
+                object_name = normalize_object_name(object_name_raw)
+                folder_name = LP_FOLDER_OVERRIDES.get(object_name, object_name)
+                if folder_name != object_name:
+                    print(
+                        f"  - [Инфо] Используем сопоставление LP: {object_name} → {folder_name}"
+                    )
+                pdf_dest_dir = (
+                    DEST_ROOT_DIR
+                    / year
+                    / month_folder_name
+                    / part
+                    / "pdf"
+                    / folder_name
+                )
+                archive_dest_dir = (
+                    DEST_ROOT_DIR
+                    / year
+                    / month_folder_name
+                    / part
+                    / "Native"
+                    / folder_name
+                )
+                base_metadata = _merge_metadata(
+                    base_metadata,
+                    {
+                        "destination_folder": folder_name,
+                        "destination_prefix": folder_name,
+                    },
+                )
+            elif part == "CS":
+                print("  - [Инфо] Раздел CS.")
+                tz_index = data["tz_index"]
+                base_metadata = _merge_metadata(base_metadata, {"tz_index": tz_index})
 
-    if not pdf_dest_dir or not archive_dest_dir:
+                folder_prefix = CS_FOLDER_OVERRIDES.get(tz_index, tz_index)
+                if folder_prefix != tz_index:
+                    print(
+                        f"  - [Инфо] Используем префикс из справочника: {folder_prefix}"
+                    )
+
+                base_search_dir = (
+                    DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
+                )
+                base_search_dir.mkdir(parents=True, exist_ok=True)
+
+                found_folders = list(base_search_dir.glob(f"{folder_prefix}*"))
+                if not found_folders:
+                    message = f"?? ??????? ????? ?? ??????? {folder_prefix} ? {base_search_dir}"
+                    print(f"  - [Ошибка] {message}")
+                    _log_error(
+                        TransferAction.COPY_DESTINATION,
+                        report_file,
+                        None,
+                        message,
+                        base_metadata,
+                    )
+                    return
+                if len(found_folders) > 1:
+                    print(
+                        f"  - [Внимание] Несколько совпадений, берём {found_folders[0].name}"
+                    )
+
+                target_folder_name = found_folders[0].name
+                pdf_dest_dir = base_search_dir / target_folder_name
+                archive_dest_dir = (
+                    DEST_ROOT_DIR
+                    / year
+                    / month_folder_name
+                    / part
+                    / "Native"
+                    / target_folder_name
+                )
+                base_metadata = _merge_metadata(
+                    base_metadata,
+                    {
+                        "destination_folder": target_folder_name,
+                        "destination_prefix": folder_prefix,
+                    },
+                )
+    else:
+        print("  - [INFO] Skipping DEST_ROOT distribution due to settings.")
+        return
+    if dest_root_enabled and (not pdf_dest_dir or not archive_dest_dir):
         message = "Не удалось определить директорию назначения."
         print(f"  - [Ошибка] {message}")
         _log_error(
@@ -657,26 +703,39 @@ def process_project_folder(project_path: Path) -> None:
         )
         return
 
-    try:
-        notes_target = NOTES_DIR / report_file.name
-        shutil.copy(report_file, NOTES_DIR)
-        _log_success(
-            TransferAction.COPY_NOTES,
-            report_file,
-            notes_target,
-            _merge_metadata(base_metadata, {"notes_dir": str(NOTES_DIR)}),
-        )
-        print(f"  - Файл скопирован в {NOTES_DIR}")
-    except Exception as e:  # noqa: BLE001
-        message = f"Ошибка копирования в {NOTES_DIR}: {e}"
-        print(f"  - [Ошибка] {message}")
-        _log_error(
-            TransferAction.COPY_NOTES, report_file, notes_target, message, base_metadata
-        )
-        return
+    if notes_enabled:
+        try:
+            notes_target = NOTES_DIR / report_file.name
+            shutil.copy(report_file, NOTES_DIR)
+            _log_success(
+                TransferAction.COPY_NOTES,
+                report_file,
+                notes_target,
+                _merge_metadata(base_metadata, {"notes_dir": str(NOTES_DIR)}),
+            )
+            print(f"  - File copied to {NOTES_DIR}")
+        except Exception as e:  # noqa: BLE001
+            message = f"Failed to copy to {NOTES_DIR}: {e}"
+            print(f"  - [ERROR] {message}")
+            _log_error(
+                TransferAction.COPY_NOTES,
+                report_file,
+                notes_target,
+                message,
+                base_metadata,
+            )
+            return
+    else:
+        print("  - [INFO] NOTES distribution disabled by settings.")
 
-    copy_to_gst_folder(report_file, date_str, TRA_GST_DIR, metadata=base_metadata)
-    process_special_grouping_for_sub_app(report_file, data, metadata=base_metadata)
+    if tra_gst_enabled:
+        copy_to_gst_folder(report_file, date_str, TRA_GST_DIR, metadata=base_metadata)
+    else:
+        print("  - [INFO] TRA_GST distribution disabled by settings.")
+    if tra_sub_app_enabled:
+        process_special_grouping_for_sub_app(report_file, data, metadata=base_metadata)
+    else:
+        print("  - [INFO] 05_TRA_SUB_app distribution disabled by settings.")
 
     try:
         pdf_dest_dir.mkdir(parents=True, exist_ok=True)

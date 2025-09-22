@@ -28,13 +28,35 @@ if str(REPO_ROOT) not in sys.path:
 pipeline = importlib.import_module("toir_raspredelenije")
 DEFAULT_INBOX = pipeline.INBOX_DIR
 DESTINATION_CONFIG = (
-    ("INBOX", "TOIR_INBOX_DIR", DEFAULT_INBOX),
-    ("NOTES", "TOIR_NOTES_DIR", pipeline.NOTES_DIR),
-    ("TRA_GST", "TOIR_TRA_GST_DIR", pipeline.TRA_GST_DIR),
-    ("TRA_SUB_APP", "TOIR_TRA_SUB_APP_DIR", pipeline.TRA_SUB_APP_DIR),
-    ("DEST_ROOT", "TOIR_DEST_ROOT_DIR", pipeline.DEST_ROOT_DIR),
+    ("INBOX", "TOIR_INBOX_DIR", DEFAULT_INBOX, None, True),
+    ("NOTES", "TOIR_NOTES_DIR", pipeline.NOTES_DIR, "TOIR_ENABLE_NOTES", True),
+    ("TRA_GST", "TOIR_TRA_GST_DIR", pipeline.TRA_GST_DIR, "TOIR_ENABLE_TRA_GST", True),
+    (
+        "TRA_SUB_APP",
+        "TOIR_TRA_SUB_APP_DIR",
+        pipeline.TRA_SUB_APP_DIR,
+        "TOIR_ENABLE_TRA_SUB_APP",
+        False,
+    ),
+    (
+        "DEST_ROOT",
+        "TOIR_DEST_ROOT_DIR",
+        pipeline.DEST_ROOT_DIR,
+        "TOIR_ENABLE_DEST_ROOT",
+        True,
+    ),
 )
-DESTINATION_LABELS = {env: name for name, env, _ in DESTINATION_CONFIG}
+DESTINATION_LABELS = {env: name for name, env, *_ in DESTINATION_CONFIG}
+DESTINATION_FLAG_ENVS = {
+    env: flag_env
+    for _, env, _, flag_env, _ in DESTINATION_CONFIG
+    if flag_env is not None
+}
+DESTINATION_FLAG_DEFAULTS = {
+    flag_env: default_enabled
+    for _, _, _, flag_env, default_enabled in DESTINATION_CONFIG
+    if flag_env is not None
+}
 PIPELINE_SCRIPT = REPO_ROOT / "toir_raspredelenije.py"
 
 BG_COLOR = "#F4F6F5"
@@ -376,19 +398,23 @@ def launch(base_dir: Path | None = None) -> None:
     inbox_entry.grid(row=1, column=0, sticky=tk.W)
 
     dest_vars: dict[str, tk.StringVar] = {"TOIR_INBOX_DIR": inbox_var}
+    dest_flag_vars: dict[str, tk.BooleanVar] = {}
 
     saved_paths = load_ui_paths()
     saved_inbox = saved_paths.get("TOIR_INBOX_DIR") if saved_paths else None
     if saved_inbox:
         inbox_var.set(saved_inbox)
 
-    def collect_current_paths() -> dict[str, str]:
-        """Считать текущие пути из полей ввода."""
-        return {env: var.get().strip() for env, var in dest_vars.items()}
+    def collect_current_settings() -> dict[str, str]:
+        """Считать текущие пути и флаги из полей ввода."""
+        snapshot = {env: var.get().strip() for env, var in dest_vars.items()}
+        for flag_env, flag_var in dest_flag_vars.items():
+            snapshot[flag_env] = "1" if flag_var.get() else "0"
+        return snapshot
 
     def persist_paths() -> None:
         """Сохранить выбранные пользователем пути на диск."""
-        paths_snapshot = collect_current_paths()
+        paths_snapshot = collect_current_settings()
         try:
             save_ui_paths(paths_snapshot)
         except OSError as exc:
@@ -445,9 +471,25 @@ def launch(base_dir: Path | None = None) -> None:
 
     dest_frame = ttk.Frame(control_tab, style="Card.TFrame", padding=(8, 8))
     dest_frame.grid(row=3, column=0, columnspan=3, sticky=tk.EW, pady=(4, 6))
-    for name, env_name, default_path in DESTINATION_CONFIG[1:]:
+    for name, env_name, default_path, flag_env, default_enabled in DESTINATION_CONFIG[
+        1:
+    ]:
         row = ttk.Frame(dest_frame, style="Card.TFrame")
         row.pack(fill=tk.X, pady=1)
+
+        enabled_var: tk.BooleanVar | None = None
+        if flag_env:
+            saved_flag = saved_paths.get(flag_env) if saved_paths else None
+            if saved_flag is not None:
+                initial_value = saved_flag.strip().lower() not in {"0", "false", "no"}
+            else:
+                initial_value = DESTINATION_FLAG_DEFAULTS.get(flag_env, default_enabled)
+            enabled_var = tk.BooleanVar(value=initial_value)
+            dest_flag_vars[flag_env] = enabled_var
+            ttk.Checkbutton(row, variable=enabled_var).pack(side=tk.LEFT, padx=(0, 4))
+        else:
+            ttk.Label(row, text="", width=2).pack(side=tk.LEFT, padx=(0, 4))
+
         ttk.Label(row, text=f"{name}:").pack(side=tk.LEFT, padx=(0, 6))
         var = tk.StringVar(value=str(default_path))
         dest_vars[env_name] = var
@@ -458,16 +500,17 @@ def launch(base_dir: Path | None = None) -> None:
             side=tk.LEFT, fill=tk.X, expand=True
         )
         ttk.Button(
-            row, text="Выбрать...", command=make_select_callback(var, default_path)
+            row, text="???????...", command=make_select_callback(var, default_path)
         ).pack(
             side=tk.LEFT,
             padx=(4, 0),
         )
-        ttk.Button(row, text="Открыть", command=make_open_callback(var)).pack(
+        ttk.Button(row, text="???????", command=make_open_callback(var)).pack(
             side=tk.LEFT,
             padx=(4, 0),
         )
-
+        if enabled_var is not None:
+            enabled_var.trace_add("write", lambda *_args: persist_paths())
     status_var = tk.StringVar(value="Готово")
     status_label = ttk.Label(
         control_tab,
@@ -614,16 +657,24 @@ def launch(base_dir: Path | None = None) -> None:
         if is_running.get():
             return
         overrides: dict[str, str] = {}
-        for env_name, var in dest_vars.items():
+        for name, env_name, _, flag_env, _ in DESTINATION_CONFIG:
+            var = dest_vars[env_name]
             raw_value = var.get().strip()
-            if not raw_value:
+            enabled = True
+            if flag_env:
+                flag_var = dest_flag_vars.get(flag_env)
+                enabled = bool(flag_var.get()) if flag_var is not None else True
+                overrides[flag_env] = "1" if enabled else "0"
+            needs_path = flag_env is None or enabled
+            if needs_path and not raw_value:
                 label = DESTINATION_LABELS.get(env_name, env_name)
-                messagebox.showerror("Ошибка", f"Укажите путь для {label}.")
+                messagebox.showerror("??????", f"??????? ???? ??? {label}.")
                 return
-            resolved = Path(raw_value).expanduser()
-            resolved_str = str(resolved)
-            overrides[env_name] = resolved_str
-            dest_vars[env_name].set(resolved_str)
+            if raw_value:
+                resolved = Path(raw_value).expanduser()
+                resolved_str = str(resolved)
+                overrides[env_name] = resolved_str
+                dest_vars[env_name].set(resolved_str)
         inbox_path = Path(overrides["TOIR_INBOX_DIR"])
         if not inbox_path.exists():
             messagebox.showerror("Ошибка", f"Папка не найдена: {inbox_path}")
@@ -648,8 +699,11 @@ def launch(base_dir: Path | None = None) -> None:
                 "Дождитесь завершения обработки перед сбросом настроек.",
             )
             return
-        for _, env_name, default_path in DESTINATION_CONFIG:
+        for _, env_name, default_path, flag_env, default_enabled in DESTINATION_CONFIG:
             dest_vars[env_name].set(str(default_path))
+            if flag_env and flag_env in dest_flag_vars:
+                default_flag = DESTINATION_FLAG_DEFAULTS.get(flag_env, default_enabled)
+                dest_flag_vars[flag_env].set(default_flag)
         status_var.set("Пути сброшены на значения по умолчанию")
         append_log("Сброс путей на значения по умолчанию\n", tag="status")
         persist_paths()
