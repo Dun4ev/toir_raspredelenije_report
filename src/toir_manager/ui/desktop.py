@@ -57,6 +57,7 @@ DESTINATION_FLAG_DEFAULTS = {
     for _, _, _, flag_env, default_enabled in DESTINATION_CONFIG
     if flag_env is not None
 }
+PART_FILTER_CHOICES = ("CS/LP", "CS", "LP")
 PIPELINE_SCRIPT = REPO_ROOT / "toir_raspredelenije.py"
 
 BG_COLOR = "#F4F6F5"
@@ -405,11 +406,25 @@ def launch(base_dir: Path | None = None) -> None:
     if saved_inbox:
         inbox_var.set(saved_inbox)
 
+    part_filter_var = tk.StringVar(value=pipeline.PART_FILTER_DEFAULT)
+    saved_part_filter = saved_paths.get("TOIR_PART_FILTER") if saved_paths else None
+    if saved_part_filter:
+        normalized_part = saved_part_filter.strip().upper()
+        if normalized_part not in PART_FILTER_CHOICES:
+            normalized_part = pipeline.PART_FILTER_DEFAULT
+        part_filter_var.set(normalized_part)
+
     def collect_current_settings() -> dict[str, str]:
         """Считать текущие пути и флаги из полей ввода."""
         snapshot = {env: var.get().strip() for env, var in dest_vars.items()}
         for flag_env, flag_var in dest_flag_vars.items():
             snapshot[flag_env] = "1" if flag_var.get() else "0"
+        part_value = (
+            part_filter_var.get().strip().upper() or pipeline.PART_FILTER_DEFAULT
+        )
+        if part_value not in PART_FILTER_CHOICES:
+            part_value = pipeline.PART_FILTER_DEFAULT
+        snapshot["TOIR_PART_FILTER"] = part_value
         return snapshot
 
     def persist_paths() -> None:
@@ -465,12 +480,25 @@ def launch(base_dir: Path | None = None) -> None:
         control_tab, text="Открыть", command=lambda: open_directory(inbox_var)
     ).grid(row=1, column=2, padx=(8, 0))
 
+    ttk.Label(control_tab, text="Фильтр по части").grid(
+        row=2, column=0, sticky=tk.W, pady=(8, 2)
+    )
+    part_filter_combo = ttk.Combobox(
+        control_tab,
+        values=PART_FILTER_CHOICES,
+        textvariable=part_filter_var,
+        state="readonly",
+        width=12,
+    )
+    part_filter_combo.grid(row=3, column=0, sticky=tk.W)
+    part_filter_combo.bind("<<ComboboxSelected>>", lambda _event: persist_paths())
+
     ttk.Label(control_tab, text="Назначения").grid(
-        row=2, column=0, sticky=tk.W, pady=(10, 2)
+        row=4, column=0, sticky=tk.W, pady=(10, 2)
     )
 
     dest_frame = ttk.Frame(control_tab, style="Card.TFrame", padding=(8, 8))
-    dest_frame.grid(row=3, column=0, columnspan=3, sticky=tk.EW, pady=(4, 6))
+    dest_frame.grid(row=5, column=0, columnspan=3, sticky=tk.EW, pady=(4, 6))
     for name, env_name, default_path, flag_env, default_enabled in DESTINATION_CONFIG[
         1:
     ]:
@@ -523,14 +551,14 @@ def launch(base_dir: Path | None = None) -> None:
         textvariable=status_var,
         style="Status.TLabel",
     )
-    status_label.grid(row=4, column=0, columnspan=3, sticky=tk.EW, pady=(10, 0))
+    status_label.grid(row=6, column=0, columnspan=3, sticky=tk.EW, pady=(10, 0))
 
     button_frame = ttk.Frame(control_tab)
-    button_frame.grid(row=5, column=0, columnspan=3, sticky=tk.E, pady=(6, 0))
+    button_frame.grid(row=7, column=0, columnspan=3, sticky=tk.E, pady=(6, 0))
 
     log_frame = ttk.Frame(control_tab, style="Card.TFrame", padding=(8, 8))
-    log_frame.grid(row=6, column=0, columnspan=3, sticky=tk.NSEW, pady=(6, 0))
-    control_tab.rowconfigure(6, weight=1)
+    log_frame.grid(row=8, column=0, columnspan=3, sticky=tk.NSEW, pady=(6, 0))
+    control_tab.rowconfigure(8, weight=1)
     control_tab.columnconfigure(0, weight=1)
 
     log_text = tk.Text(
@@ -685,6 +713,12 @@ def launch(base_dir: Path | None = None) -> None:
         if not inbox_path.exists():
             messagebox.showerror("Ошибка", f"Папка не найдена: {inbox_path}")
             return
+        part_selection = (
+            part_filter_var.get().strip().upper() or pipeline.PART_FILTER_DEFAULT
+        )
+        if part_selection not in PART_FILTER_CHOICES:
+            part_selection = pipeline.PART_FILTER_DEFAULT
+        overrides["TOIR_PART_FILTER"] = part_selection
         persist_paths()
         clear_log()
         status_var.set("Выполняется...")
@@ -710,6 +744,7 @@ def launch(base_dir: Path | None = None) -> None:
             if flag_env and flag_env in dest_flag_vars:
                 default_flag = DESTINATION_FLAG_DEFAULTS.get(flag_env, default_enabled)
                 dest_flag_vars[flag_env].set(default_flag)
+        part_filter_var.set(pipeline.PART_FILTER_DEFAULT)
         status_var.set("Пути сброшены на значения по умолчанию")
         append_log("Сброс путей на значения по умолчанию\n", tag="status")
         persist_paths()

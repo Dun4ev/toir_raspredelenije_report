@@ -81,6 +81,10 @@ BOOL_TRUE_VALUES = {"1", "true", "yes", "on"}
 BOOL_FALSE_VALUES = {"0", "false", "no", "off"}
 
 
+PART_FILTER_DEFAULT = "CS/LP"
+VALID_PART_FILTERS = {"LP", "CS", "CS/LP"}
+
+
 def _env_flag(name: str, default: bool) -> bool:
     """?????????? ????? ???? ?? ?????????? ?????????."""
 
@@ -93,6 +97,21 @@ def _env_flag(name: str, default: bool) -> bool:
     if normalized in BOOL_FALSE_VALUES:
         return False
     return default
+
+
+def _get_part_filter() -> str:
+    """Возвращает фильтр по полю part (CS/LP)."""
+
+    raw = os.environ.get("TOIR_PART_FILTER")
+    if not raw:
+        return PART_FILTER_DEFAULT
+    normalized = raw.strip().upper()
+    if normalized not in VALID_PART_FILTERS:
+        print(
+            f"[WARN] Неподдерживаемое значение TOIR_PART_FILTER={raw}; используется CS/LP по умолчанию."
+        )
+        return PART_FILTER_DEFAULT
+    return normalized
 
 
 INBOX_DIR = _override_path(INBOX_DIR, "TOIR_INBOX_DIR")
@@ -573,6 +592,13 @@ def process_project_folder(project_path: Path) -> None:
     month_num = date_str[4:6]
     month_name = MONTH_MAP.get(month_num, "UnknownMonth")
     part = data["part"].upper()
+    part_filter = _get_part_filter()
+    if part_filter != "CS/LP" and part != part_filter:
+        print(
+            f"  - [INFO] Пропуск из-за фильтра part: {part} не входит в {part_filter}."
+        )
+        return
+
     month_folder_name = f"{month_num}.{month_name}"
     period = data["period"].upper()
 

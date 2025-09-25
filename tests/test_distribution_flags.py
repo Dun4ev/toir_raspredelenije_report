@@ -117,3 +117,65 @@ def test_find_project_folders_detects_nested_inbox(tmp_path):
     result = module.find_project_folders(inbox_dir)
 
     assert set(result) == {direct_dir, nested_dir}
+
+
+def _prepare_distribution_context(module, tmp_path, monkeypatch):
+    notes_dir = tmp_path / "notes"
+    gst_dir = tmp_path / "gst"
+    tra_sub_dir = tmp_path / "tra_sub"
+    dest_root_dir = tmp_path / "dest"
+    temp_archive_dir = tmp_path / "temp"
+
+    for path in (notes_dir, gst_dir, tra_sub_dir, dest_root_dir, temp_archive_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(module, "NOTES_DIR", notes_dir)
+    monkeypatch.setattr(module, "TRA_GST_DIR", gst_dir)
+    monkeypatch.setattr(module, "TRA_SUB_APP_DIR", tra_sub_dir)
+    monkeypatch.setattr(module, "DEST_ROOT_DIR", dest_root_dir)
+    monkeypatch.setattr(module, "TEMP_ARCHIVE_DIR", temp_archive_dir)
+    monkeypatch.setattr(module, "LOGGER", None)
+
+    return notes_dir, gst_dir, tra_sub_dir, dest_root_dir, temp_archive_dir
+
+
+def test_process_project_folder_skips_when_part_filter_mismatch(tmp_path, monkeypatch):
+    module = _load_pipeline_module()
+    notes_dir, gst_dir, tra_sub_dir, dest_root_dir, _ = _prepare_distribution_context(
+        module, tmp_path, monkeypatch
+    )
+
+    monkeypatch.setenv("TOIR_PART_FILTER", "LP")
+
+    project_dir = _make_project(
+        tmp_path,
+        "CT-DR-B-CS-UNIT-I.1.1-00-C-20250101-00_All.pdf",
+    )
+
+    module.process_project_folder(project_dir)
+
+    assert not any(notes_dir.iterdir())
+    assert not any(gst_dir.iterdir())
+    assert not any(tra_sub_dir.iterdir())
+    assert not any(dest_root_dir.rglob("*_All.pdf"))
+
+
+def test_process_project_folder_allows_matching_part_filter(tmp_path, monkeypatch):
+    module = _load_pipeline_module()
+    notes_dir, gst_dir, tra_sub_dir, dest_root_dir, _ = _prepare_distribution_context(
+        module, tmp_path, monkeypatch
+    )
+
+    monkeypatch.setenv("TOIR_PART_FILTER", "LP")
+
+    project_dir = _make_project(
+        tmp_path,
+        "CT-DR-B-LP-UNIT-I.1.1-00-C-20250101-00_All.pdf",
+    )
+
+    module.process_project_folder(project_dir)
+
+    pdf_name = "CT-DR-B-LP-UNIT-I.1.1-00-C-20250101-00_All.pdf"
+
+    assert (notes_dir / pdf_name).exists()
+    assert any(dest_root_dir.rglob(pdf_name))
