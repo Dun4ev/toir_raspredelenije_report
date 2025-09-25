@@ -526,6 +526,16 @@ def copy_to_gst_folder(
             break
 
 
+def find_project_folders(inbox_dir: Path) -> list[Path]:
+    """Рекурсивно находит каталоги, содержащие файлы `_All`."""
+
+    project_dirs: set[Path] = set()
+    for pdf_path in inbox_dir.rglob("*_All*.[pP][dD][fF]"):
+        if pdf_path.is_file():
+            project_dirs.add(pdf_path.parent)
+    return sorted(project_dirs, key=lambda item: item.as_posix().lower())
+
+
 def process_project_folder(project_path: Path) -> None:
     """Обработать проектную папку из INBOX."""
     print(f"\n--- Обрабатываем проект: {project_path.name} ---")
@@ -823,12 +833,12 @@ def main(inbox_dir: Path | None = None) -> None:
                 print(f"[Ошибка] Входной каталог отсутствует: {target_inbox}")
                 return
 
-            project_folders = [p for p in target_inbox.iterdir() if p.is_dir()]
+            project_folders = find_project_folders(target_inbox)
             if not project_folders:
-                print(f"В {target_inbox} нет папок для обработки.")
+                print(f"В {target_inbox} не найдено файлов `_All` для обработки.")
                 return
 
-            print(f"Найдено {len(project_folders)} проект(ов) в {target_inbox}.")
+            print(f"Найдено {len(project_folders)} папок с `_All` в {target_inbox}.")
             for folder in project_folders:
                 process_project_folder(folder)
 

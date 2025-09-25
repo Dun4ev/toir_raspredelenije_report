@@ -93,3 +93,27 @@ def test_process_project_folder_skips_tra_sub_app_when_disabled(tmp_path, monkey
     assert not any(tra_sub_dir.iterdir())
     assert (notes_dir / pdf_name).exists()
     assert any(dest_root_dir.rglob(pdf_name))
+
+
+def test_find_project_folders_detects_nested_inbox(tmp_path):
+    module = _load_pipeline_module()
+
+    inbox_dir = tmp_path / "inbox"
+    direct_dir = inbox_dir / "CT-DR-B-LP-UNIT-I.1.1-00-C-20250101-00"
+    nested_dir = inbox_dir / "outer" / "inner"
+
+    direct_dir.mkdir(parents=True)
+    nested_dir.mkdir(parents=True)
+
+    (direct_dir / "CT-DR-B-LP-UNIT-I.1.1-00-C-20250101-00_All.pdf").write_text(
+        "pdf",
+        encoding="utf-8",
+    )
+    (nested_dir / "CT-DR-B-LP-UNIT-I.1.1-00-C-20250101-00_All.pdf").write_text(
+        "pdf",
+        encoding="utf-8",
+    )
+
+    result = module.find_project_folders(inbox_dir)
+
+    assert set(result) == {direct_dir, nested_dir}
