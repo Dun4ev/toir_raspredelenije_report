@@ -65,7 +65,7 @@ TEMP_ARCHIVE_DIR = Path(
 
 
 def _override_path(default: Path, env_name: str) -> Path:
-    """?????????? ???? ? ?????? ?????????? ?????????."""
+    """Возвращает путь, переопределённый переменной окружения."""
 
     override = os.environ.get(env_name)
     if not override:
@@ -86,7 +86,7 @@ VALID_PART_FILTERS = {"LP", "CS", "CS/LP"}
 
 
 def _env_flag(name: str, default: bool) -> bool:
-    """?????????? ????? ???? ?? ?????????? ?????????."""
+    """Считывает булеву переменную окружения с резервным значением."""
 
     value = os.environ.get(name)
     if value is None:
@@ -421,7 +421,7 @@ def process_special_grouping_for_sub_app(
 
         dest_dir = base_dest_dir / folder_name
         dest_dir.mkdir(parents=True, exist_ok=True)
-        print(f"    - ?????? ???????: {dest_dir}")
+        print(f"    - Копируем отчёт в каталог: {dest_dir}")
         shutil.copy(report_file, dest_dir)
         _log_success(
             TransferAction.COPY_TRA_SUB,
@@ -696,7 +696,7 @@ def process_project_folder(project_path: Path) -> None:
 
                 found_folders = list(base_search_dir.glob(f"{folder_prefix}*"))
                 if not found_folders:
-                    message = f"?? ??????? ????? ?? ??????? {folder_prefix} ? {base_search_dir}"
+                    message = f"Не удалось найти директорию для префикса {folder_prefix} в {base_search_dir}"
                     print(f"  - [Ошибка] {message}")
                     _log_error(
                         TransferAction.COPY_DESTINATION,
