@@ -10,7 +10,10 @@ SRC_DIR = Path(__file__).resolve().parent / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from toir_manager.core.logging_models import TransferAction  # noqa: E402
+from toir_manager.core.logging_models import (  # noqa: E402
+    TransferAction,
+    TransferStatus,
+)
 from toir_manager.services.log_writer import DispatchLogger  # noqa: E402
 
 # Для работы с Excel требуется установка библиотеки openpyxl: pip install openpyxl
@@ -83,6 +86,10 @@ BOOL_FALSE_VALUES = {"0", "false", "no", "off"}
 
 PART_FILTER_DEFAULT = "CS/LP"
 VALID_PART_FILTERS = {"LP", "CS", "CS/LP"}
+
+PERIOD_TRANSLATION = {
+    "С": "C",
+}
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -228,6 +235,11 @@ CS_FOLDER_OVERRIDES: dict[str, str] = {
     # Добавляйте остальные индексы по мере необходимости
 }
 
+CS_DEFAULT_FOLDERS: dict[str, str] = {
+    "II.2": "Корректирующее обслуживание",
+    "II.18": "II.18_UPS",
+}
+
 
 LP_FOLDER_OVERRIDES: dict[str, str] = {
     # Добавляйте сопоставления, если объект должен попадать в другую папку
@@ -290,6 +302,29 @@ def _log_error(
         pass
 
 
+def _log_destination_event(
+    event: str,
+    source: Path,
+    target: Path,
+    metadata: dict[str, str] | None = None,
+) -> None:
+    """Логирует событие для каталога назначения."""
+
+    if LOGGER is None:
+        return
+    try:
+        LOGGER.log(
+            action=TransferAction.COPY_DESTINATION,
+            status=TransferStatus.SUCCESS,
+            source_path=source,
+            target_path=target,
+            message=event,
+            metadata=_merge_metadata(metadata, {"destination_event": event}),
+        )
+    except Exception:
+        pass
+
+
 # Колонка с суффиксами (краткая аббревиатура)
 
 
@@ -340,7 +375,8 @@ def process_special_grouping_for_sub_app(
     print(f"  - Обрабатываем дополнительную группировку для {TRA_SUB_APP_DIR.name}...")
     try:
         grouping_key = f"{data['tz_index']}-{data['reserved']}-{data['period']}"
-        period = data["period"].upper()
+        period_raw = data["period"].upper()
+        period = PERIOD_TRANSLATION.get(period_raw, period_raw)
 
         folder_name = ""
         extra_metadata = _merge_metadata(
@@ -350,7 +386,7 @@ def process_special_grouping_for_sub_app(
             },
         )
 
-        if period in {"C", "С"}:  # Обрабатываем латинский и кириллический варианты
+        if period == "C":  # Обрабатываем латинский и кириллический варианты
             folder_name = grouping_key
             extra_metadata = _merge_metadata(
                 extra_metadata,
@@ -600,7 +636,8 @@ def process_project_folder(project_path: Path) -> None:
         return
 
     month_folder_name = f"{month_num}.{month_name}"
-    period = data["period"].upper()
+    period_raw = data["period"].upper()
+    period = PERIOD_TRANSLATION.get(period_raw, period_raw)
 
     base_metadata = {
         k: v
@@ -689,55 +726,62 @@ def process_project_folder(project_path: Path) -> None:
                         f"  - [Инфо] Используем префикс из справочника: {folder_prefix}"
                     )
 
-                base_search_dir = (
-                    DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
+                pdf_parent = DEST_ROOT_DIR / year / month_folder_name / part / "pdf"
+                native_parent = (
+                    DEST_ROOT_DIR / year / month_folder_name / part / "Native"
                 )
-                base_search_dir.mkdir(parents=True, exist_ok=True)
+                pdf_parent.mkdir(parents=True, exist_ok=True)
+                native_parent.mkdir(parents=True, exist_ok=True)
 
-                found_folders = list(base_search_dir.glob(f"{folder_prefix}*"))
-                if not found_folders:
-                    message = f"Не удалось найти директорию для префикса {folder_prefix} в {base_search_dir}"
-                    print(f"  - [Ошибка] {message}")
-                    _log_error(
-                        TransferAction.COPY_DESTINATION,
-                        report_file,
-                        None,
-                        message,
-                        base_metadata,
+                found_folders = sorted(pdf_parent.glob(f"{folder_prefix}*"))
+                destination_event = "found"
+                if found_folders:
+                    target_folder_name = found_folders[0].name
+                    if len(found_folders) > 1:
+                        print(
+                            f"  - [Внимание] Несколько совпадений, берём {target_folder_name}"
+                        )
+                    pdf_dest_dir = found_folders[0]
+                else:
+                    target_folder_name = CS_DEFAULT_FOLDERS.get(
+                        folder_prefix, folder_prefix
                     )
-                    return
-                if len(found_folders) > 1:
-                    print(
-                        f"  - [Внимание] Несколько совпадений, берём {found_folders[0].name}"
-                    )
+                    pdf_dest_dir = pdf_parent / target_folder_name
+                    pdf_dest_dir.mkdir(parents=True, exist_ok=True)
+                    destination_event = "created"
+                    print(f"  - [Инфо] Создаём каталог: {pdf_dest_dir}")
 
-                target_folder_name = found_folders[0].name
-                pdf_dest_dir = base_search_dir / target_folder_name
-                archive_dest_dir = (
-                    DEST_ROOT_DIR
-                    / year
-                    / month_folder_name
-                    / part
-                    / "Native"
-                    / target_folder_name
-                )
+                archive_dest_dir = native_parent / target_folder_name
+                archive_dest_dir.mkdir(parents=True, exist_ok=True)
+
                 base_metadata = _merge_metadata(
                     base_metadata,
                     {
                         "destination_folder": target_folder_name,
                         "destination_prefix": folder_prefix,
+                        "destination_path": str(pdf_dest_dir),
                     },
+                )
+                _log_destination_event(
+                    destination_event,
+                    report_file,
+                    pdf_dest_dir,
+                    base_metadata,
                 )
     else:
         print("  - [INFO] Skipping DEST_ROOT distribution due to settings.")
         return
-    if dest_root_enabled and (not pdf_dest_dir or not archive_dest_dir):
+
+    if dest_root_enabled and (pdf_dest_dir is None or archive_dest_dir is None):
         message = "Не удалось определить директорию назначения."
         print(f"  - [Ошибка] {message}")
         _log_error(
             TransferAction.COPY_DESTINATION, report_file, None, message, base_metadata
         )
         return
+
+    assert pdf_dest_dir is not None
+    assert archive_dest_dir is not None
 
     if notes_enabled:
         try:

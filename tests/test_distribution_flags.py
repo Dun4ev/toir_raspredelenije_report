@@ -179,3 +179,71 @@ def test_process_project_folder_allows_matching_part_filter(tmp_path, monkeypatc
 
     assert (notes_dir / pdf_name).exists()
     assert any(dest_root_dir.rglob(pdf_name))
+
+
+def test_process_project_folder_creates_cs_destination_from_defaults(
+    tmp_path, monkeypatch
+):
+    module = _load_pipeline_module()
+
+    notes_dir, gst_dir, tra_sub_dir, dest_root_dir, temp_archive_dir = (
+        _prepare_distribution_context(module, tmp_path, monkeypatch)
+    )
+
+    monkeypatch.setenv("TOIR_ENABLE_NOTES", "0")
+    monkeypatch.setenv("TOIR_ENABLE_TRA_GST", "0")
+    monkeypatch.setenv("TOIR_ENABLE_TRA_SUB_APP", "0")
+    monkeypatch.setenv("TOIR_ENABLE_DEST_ROOT", "1")
+
+    project_dir = _make_project(
+        tmp_path,
+        "CT-DR-B-CS-GCU3-II.18.2-00-1M-20250817-00_All.pdf",
+    )
+
+    module.process_project_folder(project_dir)
+
+    pdf_name = "CT-DR-B-CS-GCU3-II.18.2-00-1M-20250817-00_All.pdf"
+    base_path = dest_root_dir / "2025" / "08.August" / "CS"
+    pdf_dir = base_path / "pdf" / "II.18_UPS"
+    native_dir = base_path / "Native" / "II.18_UPS"
+    assert (pdf_dir / pdf_name).exists()
+    assert native_dir.exists()
+    assert (native_dir / f"{project_dir.name}.zip").exists()
+
+
+def test_process_project_folder_uses_weekly_folder_for_cyrillic_period(
+    tmp_path, monkeypatch
+):
+    module = _load_pipeline_module()
+
+    notes_dir, gst_dir, tra_sub_dir, dest_root_dir, temp_archive_dir = (
+        _prepare_distribution_context(module, tmp_path, monkeypatch)
+    )
+
+    monkeypatch.setenv("TOIR_ENABLE_NOTES", "0")
+    monkeypatch.setenv("TOIR_ENABLE_TRA_GST", "0")
+    monkeypatch.setenv("TOIR_ENABLE_TRA_SUB_APP", "0")
+    monkeypatch.setenv("TOIR_ENABLE_DEST_ROOT", "1")
+
+    project_dir = _make_project(
+        tmp_path,
+        "CT-DR-B-CS-ES-II.2.6-00-С-20250812-02_All.pdf",
+    )
+
+    module.process_project_folder(project_dir)
+
+    pdf_name = "CT-DR-B-CS-ES-II.2.6-00-С-20250812-02_All.pdf"
+    base_path = dest_root_dir / "2025" / "08.August" / "CS"
+    pdf_parent = base_path / "pdf"
+    native_parent = base_path / "Native"
+    folder_names = {item.name for item in pdf_parent.iterdir()}
+    target_folder = (
+        "Корректирующее обслуживание"
+        if "Корректирующее обслуживание" in folder_names
+        else "Корректирующееобслуживание"
+    )
+    pdf_dir = pdf_parent / target_folder
+    native_dir = native_parent / target_folder
+    assert (pdf_dir / pdf_name).exists()
+    assert native_dir.exists()
+    assert (native_dir / f"{project_dir.name}.zip").exists()
