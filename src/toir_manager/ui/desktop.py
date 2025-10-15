@@ -483,15 +483,16 @@ def launch(base_dir: Path | None = None) -> None:
     ttk.Label(control_tab, text="Фильтр по части").grid(
         row=2, column=0, sticky=tk.W, pady=(8, 2)
     )
-    part_filter_combo = ttk.Combobox(
-        control_tab,
-        values=PART_FILTER_CHOICES,
-        textvariable=part_filter_var,
-        state="readonly",
-        width=12,
-    )
-    part_filter_combo.grid(row=3, column=0, sticky=tk.W)
-    part_filter_combo.bind("<<ComboboxSelected>>", lambda _event: persist_paths())
+    part_filter_group = ttk.Frame(control_tab)
+    part_filter_group.grid(row=3, column=0, sticky=tk.W)
+    for idx, choice in enumerate(PART_FILTER_CHOICES):
+        ttk.Radiobutton(
+            part_filter_group,
+            text=choice,
+            value=choice,
+            variable=part_filter_var,
+            command=persist_paths,
+        ).grid(row=0, column=idx, padx=(0 if idx == 0 else 12, 0))
 
     ttk.Label(control_tab, text="Назначения").grid(
         row=4, column=0, sticky=tk.W, pady=(10, 2)
