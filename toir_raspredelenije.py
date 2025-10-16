@@ -902,6 +902,24 @@ def main(inbox_dir: Path | None = None) -> None:
             if not target_inbox.exists():
                 print(f"[Ошибка] Входной каталог отсутствует: {target_inbox}")
                 return
+            stray_pdfs = [
+                item
+                for item in target_inbox.iterdir()
+                if item.is_file() and item.suffix.lower() == ".pdf"
+            ]
+            if stray_pdfs:
+                print(
+                    "[Предупреждение] В корне входного каталога обнаружены PDF-файлы. "
+                    "Каждый отчёт должен лежать в отдельной папке. Обработка остановлена."
+                )
+                for pdf_path in stray_pdfs:
+                    _log_error(
+                        TransferAction.COPY_DESTINATION,
+                        pdf_path,
+                        None,
+                        "Файл расположен в корне INBOX. Требуется отдельная папка для каждого отчёта.",
+                    )
+                return
 
             project_folders = find_project_folders(target_inbox)
             if not project_folders:

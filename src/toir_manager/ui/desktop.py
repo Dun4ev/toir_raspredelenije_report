@@ -674,8 +674,34 @@ def launch(base_dir: Path | None = None) -> None:
         if stderr:
             append_log("\n[stderr]\n" + stderr, tag="stderr")
         if returncode == 0:
-            status_var.set("Готово")
-            messagebox.showinfo("Распределение", "Обработка завершена успешно.")
+            warnings: list[str] = []
+            errors: list[str] = []
+            infos: list[str] = []
+            for raw_line in (stdout or "").splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if "[Ошибка]" in line or "[ERROR]" in line:
+                    errors.append(line)
+                elif "[Предупреждение]" in line or "[WARNING]" in line:
+                    warnings.append(line)
+                elif "[Инфо]" in line and "Создаём каталог" in line:
+                    infos.append(line)
+            if errors:
+                status_var.set("Завершено с ошибками")
+                payload = "\n".join(errors[:5])
+                messagebox.showerror("Распределение", payload)
+            elif warnings:
+                status_var.set("Завершено с предупреждениями")
+                summary_lines = warnings + infos
+                payload = "\n".join(summary_lines[:5])
+                messagebox.showwarning("Распределение", payload)
+            else:
+                status_var.set("Готово")
+                if infos:
+                    messagebox.showinfo("Распределение", "\n".join(infos[:5]))
+                else:
+                    messagebox.showinfo("Распределение", "Обработка завершена успешно.")
             refresh_runs()
         else:
             status_var.set("Завершено с ошибками")
