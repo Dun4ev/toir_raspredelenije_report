@@ -1,6 +1,4 @@
-﻿"""
-Простая точка входа для запуска Tkinter UI без настройки PYTHONPATH.
-"""
+"""Обёртка запуска Tkinter UI с настройкой PYTHONPATH."""
 
 from __future__ import annotations
 
@@ -16,22 +14,34 @@ from toir_manager.ui.desktop import launch  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Создать парсер аргументов для запуска UI."""
+    """Создаёт парсер аргументов для UI и служебных режимов."""
 
-    parser = argparse.ArgumentParser(description="Просмотр журналов распределения PDF")
+    parser = argparse.ArgumentParser(
+        description="Графический интерфейс распределения PDF"
+    )
     parser.add_argument(
         "--base-dir",
         type=Path,
         default=Path("logs") / "dispatch",
         help="Каталог с JSONL-журналами",
     )
+    parser.add_argument(
+        "--run-pipeline",
+        action="store_true",
+        help="Запустить конвейер распределения PDF без UI.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Запустить Tkinter UI."""
+    """Точка входа UI или конвейера в зависимости от аргументов."""
 
     args = build_parser().parse_args(argv)
+    if args.run_pipeline:
+        from toir_raspredelenije import main as pipeline_main  # noqa: E402
+
+        pipeline_main()
+        return 0
     launch(base_dir=args.base_dir)
     return 0
 

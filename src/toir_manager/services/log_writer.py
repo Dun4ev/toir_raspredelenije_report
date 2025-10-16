@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from contextlib import AbstractContextManager
 from datetime import datetime
@@ -26,7 +27,16 @@ class DispatchLogger(AbstractContextManager["DispatchLogger"]):
         base_dir: Path | None = None,
         run_id: str | None = None,
     ) -> None:
-        self._base_dir = (base_dir or Path("logs") / "dispatch").resolve()
+        env_override = os.environ.get("TOIR_DISPATCH_DIR")
+        if base_dir is not None:
+            candidate = Path(base_dir)
+        elif env_override:
+            candidate = Path(env_override).expanduser()
+        else:
+            candidate = Path("logs") / "dispatch"
+        if not candidate.is_absolute():
+            candidate = (Path.cwd() / candidate).resolve()
+        self._base_dir = candidate
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
         self._file_path = self._base_dir / f"{self._run_id}.jsonl"

@@ -48,3 +48,6 @@ Thumbs.db
 # Исключения для тестовых PDF и шаблонов
 !templates/fixtures/*.pdf
 !templates/*.xlsx
+
+build/
+dist/

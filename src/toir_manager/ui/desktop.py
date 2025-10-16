@@ -375,7 +375,20 @@ def launch(base_dir: Path | None = None) -> None:
     if os.environ.get("APP_HEADLESS") == "1":
         raise RuntimeError("UI запрещён в режиме APP_HEADLESS=1")
 
-    root_dir = (base_dir or Path("logs") / "dispatch").resolve()
+    base_root = (
+        Path(sys.executable).resolve().parent
+        if getattr(sys, "frozen", False)
+        else REPO_ROOT
+    )
+    default_logs_dir = base_root / "logs" / "dispatch"
+    if base_dir is None:
+        root_dir = default_logs_dir
+    else:
+        candidate = Path(base_dir)
+        root_dir = (
+            candidate if candidate.is_absolute() else (base_root / candidate).resolve()
+        )
+    root_dir.mkdir(parents=True, exist_ok=True)
     result_queue: queue.Queue[tuple[int, str, str]] = queue.Queue()
 
     root = tk.Tk()
@@ -653,7 +666,11 @@ def launch(base_dir: Path | None = None) -> None:
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env.update(env_overrides)
-        cmd = [sys.executable, str(PIPELINE_SCRIPT)]
+        env["TOIR_DISPATCH_DIR"] = str(root_dir)
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--run-pipeline"]
+        else:
+            cmd = [sys.executable, str(PIPELINE_SCRIPT)]
         process = subprocess.run(
             cmd,
             capture_output=True,
