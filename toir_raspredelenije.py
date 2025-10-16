@@ -101,6 +101,159 @@ PERIOD_TRANSLATION = {
     "С": "C",
 }
 
+_TRANSLITERATION_BASE: dict[str, str] = {
+    "А": "A",
+    "Б": "B",
+    "В": "V",
+    "Г": "G",
+    "Ё": "Jo",
+    "Е": "E",
+    "Ж": "Zh",
+    "З": "Z",
+    "И": "I",
+    "Й": "Yo",
+    "К": "K",
+    "Л": "L",
+    "М": "M",
+    "Н": "H",
+    "О": "O",
+    "П": "P",
+    "Р": "P",
+    "С": "C",
+    "Т": "T",
+    "У": "U",
+    "Ф": "F",
+    "Х": "X",
+    "Ц": "C",
+    "Ч": "Ch",
+    "Ш": "Sh",
+    "Щ": "Sch",
+    "Ы": "Y",
+    "Э": "E",
+    "Ю": "Yu",
+    "Я": "Ya",
+}
+
+TRANSLIT_MAP: dict[str, str] = {}
+for _kir, _lat in _TRANSLITERATION_BASE.items():
+    TRANSLIT_MAP[_kir] = _lat
+    _lower = _kir.lower()
+    if _lower != _kir:
+        TRANSLIT_MAP[_lower] = _lat.lower()
+
+ALLOWED_ASCII_CHARS = set(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
+)
+
+
+def _transliterate_text(value: str) -> str:
+    """Преобразует строку в латиницу, заменяя неподдерживаемые символы подчёркиванием."""
+
+    result: list[str] = []
+    for char in value:
+        if char in TRANSLIT_MAP:
+            result.append(TRANSLIT_MAP[char])
+        elif char in ALLOWED_ASCII_CHARS:
+            result.append(char)
+        else:
+            result.append("_")
+    return "".join(result)
+
+
+def _ensure_transliterated_project(project_path: Path) -> Path | None:
+    """Переименовывает папку проекта и файлы `_All` в латиницу при необходимости."""
+
+    current_path = project_path
+    original_dir = project_path
+    target_dir_name = _transliterate_text(project_path.name) or "_"
+    target_dir = project_path.parent / target_dir_name
+
+    if target_dir != project_path:
+        if target_dir.exists():
+            message = f"Невозможно переименовать папку {project_path} в {target_dir}: цель уже существует."
+            print(f"  - [Ошибка] {message}")
+            _log_error(
+                TransferAction.RENAME,
+                project_path,
+                target_dir,
+                message,
+                {"renamed_from": project_path.name, "renamed_to": target_dir.name},
+            )
+            return None
+        try:
+            project_path.rename(target_dir)
+            current_path = target_dir
+            print(
+                f"  - [INFO] Папка переименована: {original_dir.name} -> {target_dir.name}"
+            )
+            _log_success(
+                TransferAction.RENAME,
+                original_dir,
+                target_dir,
+                {"renamed_from": original_dir.name, "renamed_to": target_dir.name},
+            )
+        except OSError as exc:
+            message = f"Не удалось переименовать папку {project_path}: {exc}"
+            print(f"  - [Ошибка] {message}")
+            _log_error(
+                TransferAction.RENAME,
+                project_path,
+                target_dir,
+                message,
+                {"renamed_from": original_dir.name, "renamed_to": target_dir_name},
+            )
+            return None
+
+    files_to_process = list(current_path.glob("*_All*.[pP][dD][fF]"))
+    for file_path in files_to_process:
+        suffix = file_path.suffix
+        base_name = file_path.name[: -len(suffix)]
+        transliterated_base = _transliterate_text(base_name) or "_"
+        target_file = file_path.with_name(transliterated_base + suffix.lower())
+        if target_file == file_path:
+            continue
+        if target_file.exists():
+            message = f"Невозможно переименовать файл {file_path.name} в {target_file.name}: цель уже существует."
+            print(f"  - [Ошибка] {message}")
+            _log_error(
+                TransferAction.RENAME,
+                file_path,
+                target_file,
+                message,
+                {
+                    "file_name": file_path.name,
+                    "project_folder": current_path.name,
+                    "rename_target": target_file.name,
+                },
+            )
+            continue
+        try:
+            file_path.rename(target_file)
+            print(
+                f"  - [INFO] Файл переименован: {file_path.name} -> {target_file.name}"
+            )
+            _log_success(
+                TransferAction.RENAME,
+                file_path,
+                target_file,
+                {"renamed_from": file_path.name, "renamed_to": target_file.name},
+            )
+        except OSError as exc:
+            message = f"Не удалось переименовать файл {file_path.name}: {exc}"
+            print(f"  - [Ошибка] {message}")
+            _log_error(
+                TransferAction.RENAME,
+                file_path,
+                target_file,
+                message,
+                {
+                    "file_name": file_path.name,
+                    "project_folder": current_path.name,
+                    "rename_target": target_file.name,
+                },
+            )
+    return current_path
+
 
 def _env_flag(name: str, default: bool) -> bool:
     """Считывает булеву переменную окружения с резервным значением."""
@@ -604,6 +757,12 @@ def find_project_folders(inbox_dir: Path) -> list[Path]:
 
 def process_project_folder(project_path: Path) -> None:
     """Обработать проектную папку из INBOX."""
+    normalized_path = _ensure_transliterated_project(project_path)
+    if normalized_path is None:
+        print(f"\n--- Пропускаем проект: {project_path.name} ---")
+        return
+
+    project_path = normalized_path
     print(f"\n--- Обрабатываем проект: {project_path.name} ---")
 
     all_matching_files: list[Path] = []

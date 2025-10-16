@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
 
+VERSION = "1.1"
+
 try:
     PROJECT_ROOT = Path(__file__).resolve().parent
 except NameError:  # PyInstaller executes .spec via exec(), __file__ отсутствует
@@ -29,7 +31,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='toir_raspredelenije',
+    name=f'toir_raspredelenije_{VERSION}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

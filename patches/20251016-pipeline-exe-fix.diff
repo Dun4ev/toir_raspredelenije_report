@@ -1,21 +1,225 @@
 diff --git a/README.md b/README.md
-index 8fbcbe5..7c9a00d 100644
+index 8fbcbe5..c79efb2 100644
 --- a/README.md
 +++ b/README.md
 @@ -13,6 +13,7 @@
  - UI использует стили: Primary (зелёные кнопки запуска), Danger (красные действия удаления), Secondary (серые вспомогательные).
  - Сохранённые пути UI лежат в `~/.toir_manager/ui_paths.json` (Windows: `%USERPROFILE%\\.toir_manager\\ui_paths.json`).
  - `toir_raspredelenije.exe` — собранный PyInstaller-дистрибутив; двойной клик запускает UI, а режим `toir_raspredelenije.exe --run-pipeline` выполняет конвейер без интерфейса.
-+- Имена файлов должны соответствовать шаблону и содержать только латиницу (A-Z, 0-9). Кириллица или лишние символы приводят к пропуску отчёта с ошибкой в журнале.
++- Имена файлов должны соответствовать шаблону и содержать только латиницу (A-Z, 0-9). При обнаружении кириллицы система выполняет автоматическую транслитерацию, а при невозможности — фиксирует ошибку и пропускает отчёт.
  
  ## Сборка и дистрибуция
  
+diff --git a/src/toir_manager/core/logging_models.py b/src/toir_manager/core/logging_models.py
+index dde2445..10fbfbc 100644
+--- a/src/toir_manager/core/logging_models.py
++++ b/src/toir_manager/core/logging_models.py
+@@ -27,6 +27,7 @@ class TransferAction(str, Enum):
+     COPY_TRA_SUB = "copy_tra_sub"
+     CREATE_ARCHIVE = "create_archive"
+     COPY_ARCHIVE = "copy_archive"
++    RENAME = "rename"
+ 
+ 
+ @dataclass(slots=True)
+diff --git a/tests/test_distribution_flags.py b/tests/test_distribution_flags.py
+index b7b741f..2af3454 100644
+--- a/tests/test_distribution_flags.py
++++ b/tests/test_distribution_flags.py
+@@ -232,7 +232,11 @@ def test_process_project_folder_uses_weekly_folder_for_cyrillic_period(
+ 
+     module.process_project_folder(project_dir)
+ 
+-    pdf_name = "CT-DR-B-CS-ES-II.2.6-00-С-20250812-02_All.pdf"
++    original_pdf_name = "CT-DR-B-CS-ES-II.2.6-00-С-20250812-02_All.pdf"
++    pdf_name = (
++        module._transliterate_text(Path(original_pdf_name).stem)
++        + Path(original_pdf_name).suffix.lower()
++    )
+     base_path = dest_root_dir / "2025" / "08.August" / "CS"
+     pdf_parent = base_path / "pdf"
+     native_parent = base_path / "Native"
+@@ -246,4 +250,5 @@ def test_process_project_folder_uses_weekly_folder_for_cyrillic_period(
+     native_dir = native_parent / target_folder
+     assert (pdf_dir / pdf_name).exists()
+     assert native_dir.exists()
+-    assert (native_dir / f"{project_dir.name}.zip").exists()
++    expected_archive = module._transliterate_text(project_dir.name) + ".zip"
++    assert (native_dir / expected_archive).exists()
 diff --git a/toir_raspredelenije.py b/toir_raspredelenije.py
-index 4393dd3..e4b9488 100644
+index 4393dd3..a15b93c 100644
 --- a/toir_raspredelenije.py
 +++ b/toir_raspredelenije.py
-@@ -606,13 +606,28 @@ def process_project_folder(project_path: Path) -> None:
+@@ -101,6 +101,159 @@ PERIOD_TRANSLATION = {
+     "С": "C",
+ }
+ 
++_TRANSLITERATION_BASE: dict[str, str] = {
++    "А": "A",
++    "Б": "B",
++    "В": "V",
++    "Г": "G",
++    "Ё": "Jo",
++    "Е": "E",
++    "Ж": "Zh",
++    "З": "Z",
++    "И": "I",
++    "Й": "Yo",
++    "К": "K",
++    "Л": "L",
++    "М": "M",
++    "Н": "H",
++    "О": "O",
++    "П": "P",
++    "Р": "P",
++    "С": "C",
++    "Т": "T",
++    "У": "U",
++    "Ф": "F",
++    "Х": "X",
++    "Ц": "C",
++    "Ч": "Ch",
++    "Ш": "Sh",
++    "Щ": "Sch",
++    "Ы": "Y",
++    "Э": "E",
++    "Ю": "Yu",
++    "Я": "Ya",
++}
++
++TRANSLIT_MAP: dict[str, str] = {}
++for _kir, _lat in _TRANSLITERATION_BASE.items():
++    TRANSLIT_MAP[_kir] = _lat
++    _lower = _kir.lower()
++    if _lower != _kir:
++        TRANSLIT_MAP[_lower] = _lat.lower()
++
++ALLOWED_ASCII_CHARS = set(
++    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
++)
++
++
++def _transliterate_text(value: str) -> str:
++    """Преобразует строку в латиницу, заменяя неподдерживаемые символы подчёркиванием."""
++
++    result: list[str] = []
++    for char in value:
++        if char in TRANSLIT_MAP:
++            result.append(TRANSLIT_MAP[char])
++        elif char in ALLOWED_ASCII_CHARS:
++            result.append(char)
++        else:
++            result.append("_")
++    return "".join(result)
++
++
++def _ensure_transliterated_project(project_path: Path) -> Path | None:
++    """Переименовывает папку проекта и файлы `_All` в латиницу при необходимости."""
++
++    current_path = project_path
++    original_dir = project_path
++    target_dir_name = _transliterate_text(project_path.name) or "_"
++    target_dir = project_path.parent / target_dir_name
++
++    if target_dir != project_path:
++        if target_dir.exists():
++            message = f"Невозможно переименовать папку {project_path} в {target_dir}: цель уже существует."
++            print(f"  - [Ошибка] {message}")
++            _log_error(
++                TransferAction.RENAME,
++                project_path,
++                target_dir,
++                message,
++                {"renamed_from": project_path.name, "renamed_to": target_dir.name},
++            )
++            return None
++        try:
++            project_path.rename(target_dir)
++            current_path = target_dir
++            print(
++                f"  - [INFO] Папка переименована: {original_dir.name} -> {target_dir.name}"
++            )
++            _log_success(
++                TransferAction.RENAME,
++                original_dir,
++                target_dir,
++                {"renamed_from": original_dir.name, "renamed_to": target_dir.name},
++            )
++        except OSError as exc:
++            message = f"Не удалось переименовать папку {project_path}: {exc}"
++            print(f"  - [Ошибка] {message}")
++            _log_error(
++                TransferAction.RENAME,
++                project_path,
++                target_dir,
++                message,
++                {"renamed_from": original_dir.name, "renamed_to": target_dir_name},
++            )
++            return None
++
++    files_to_process = list(current_path.glob("*_All*.[pP][dD][fF]"))
++    for file_path in files_to_process:
++        suffix = file_path.suffix
++        base_name = file_path.name[: -len(suffix)]
++        transliterated_base = _transliterate_text(base_name) or "_"
++        target_file = file_path.with_name(transliterated_base + suffix.lower())
++        if target_file == file_path:
++            continue
++        if target_file.exists():
++            message = f"Невозможно переименовать файл {file_path.name} в {target_file.name}: цель уже существует."
++            print(f"  - [Ошибка] {message}")
++            _log_error(
++                TransferAction.RENAME,
++                file_path,
++                target_file,
++                message,
++                {
++                    "file_name": file_path.name,
++                    "project_folder": current_path.name,
++                    "rename_target": target_file.name,
++                },
++            )
++            continue
++        try:
++            file_path.rename(target_file)
++            print(
++                f"  - [INFO] Файл переименован: {file_path.name} -> {target_file.name}"
++            )
++            _log_success(
++                TransferAction.RENAME,
++                file_path,
++                target_file,
++                {"renamed_from": file_path.name, "renamed_to": target_file.name},
++            )
++        except OSError as exc:
++            message = f"Не удалось переименовать файл {file_path.name}: {exc}"
++            print(f"  - [Ошибка] {message}")
++            _log_error(
++                TransferAction.RENAME,
++                file_path,
++                target_file,
++                message,
++                {
++                    "file_name": file_path.name,
++                    "project_folder": current_path.name,
++                    "rename_target": target_file.name,
++                },
++            )
++    return current_path
++
+ 
+ def _env_flag(name: str, default: bool) -> bool:
+     """Считывает булеву переменную окружения с резервным значением."""
+@@ -604,15 +757,36 @@ def find_project_folders(inbox_dir: Path) -> list[Path]:
+ 
+ def process_project_folder(project_path: Path) -> None:
      """Обработать проектную папку из INBOX."""
++    normalized_path = _ensure_transliterated_project(project_path)
++    if normalized_path is None:
++        print(f"\n--- Пропускаем проект: {project_path.name} ---")
++        return
++
++    project_path = normalized_path
      print(f"\n--- Обрабатываем проект: {project_path.name} ---")
  
 -    all_matching_files = []
@@ -44,7 +248,7 @@ index 4393dd3..e4b9488 100644
          return
      if len(all_matching_files) > 1:
          print(
-@@ -624,8 +639,17 @@ def process_project_folder(project_path: Path) -> None:
+@@ -624,8 +798,17 @@ def process_project_folder(project_path: Path) -> None:
  
      match = RE_FILENAME.match(report_file.name)
      if not match:
@@ -64,4 +268,4 @@ index 4393dd3..e4b9488 100644
          )
          return
  
-楤晦ⴠ札瑩愠䌯䅈䝎䱅䝏洮⁤⽢䡃乁䕇佌⹇摭਍敮⁷楦敬洠摯⁥〱㘰㐴਍湩敤⁸〰〰〰⸰㈮愳㔶户਍ⴭ‭搯癥港汵൬⬊⬫戠䌯䅈䝎䱅䝏洮൤䀊⁀〭〬⬠ⰱ㤱䀠ീ⬊‣桃湡敧潬൧⬊਍䄫汬渠瑯扡敬挠慨杮獥琠⁯桴獩瀠潲敪瑣眠汩⁬敢搠捯浵湥整⁤湩琠楨⁳楦敬മ⬊਍含敨映牯慭⁴獩戠獡摥漠⁮䭛敥⁰⁡桃湡敧潬嵧栨瑴獰⼺欯敥慰档湡敧潬⹧潣⽭湥ㄯㄮ〮⤯ബ⬊湡⁤桴獩瀠潲敪瑣愠桤牥獥琠⁯卛浥湡楴⁣敖獲潩楮杮⡝瑨灴㩳⼯敳癭牥漮杲猯数⽣㉶〮〮栮浴⥬മ⬊਍⌫‣癛⸱⸰崰ⴠ㈠㈰ⴵ〱ㄭശ⬊਍⌫⌣䄠摤摥਍⴫퀠킘톽톁톂톀킃톺킆톸₏뿐뻐턠킁킱톾킀킺₵祐湉瑳污敬⵲듐룐臑苑胑룐뇐菑苑룐닐냐퀠₸뻐뿐룐臑냐뷐룐뗐턠킀톰킁킿킾킻킾킶킵킽톸₏믐뻐돐뻐닐퀠₲䕒䑁䕍മ⬊‭鿐뗐胑뗐볐뗐뷐뷐냐近퀠킾톺톀킃킶킵킽톸₏呠䥏归䥄偓呁䡃䑟剉⁠듐믐近턠킏킲킽킾킳₾菑뫐냐럐냐뷐룐近퀠킺톰킂킰킻킾킳₰뛐菑胑뷐냐믐뻐닐മ⬊‭ꇐ뻐뻐뇐觑뗐뷐룐뗐퀭톶톃킀킽킰₻뻐퀠킽통킁킾톾킂킲통톂톁킂킲킸₸룐볐뗐뷐룐턠킈킰킱킻킾톽₃퀨킿킾톴킁킺킰킷킺₰뿐뻐퀠킺톸킀킸킻킻톸킆⦵മ⬊਍⌫⌣䌠慨杮摥਍⴫퀠킡킾톱킀킰킽톽킋₹뇐룐뷐냐胑賑퀠킿통킀킵킸킼킵킽킾킲킰₽닐怠潴物牟獡牰摥汥湥橩⹥硥恥മ⬊‭䥕퀠₸뫐뻐뷐닐뗐말뗐胑퀠톿킀₸럐냐뿐菑臑뫐뗐퀠킸₷硥⁥닐臑뗐돐듐냐퀠킿톸톈톃₂믐뻐돐룐퀠₲池杯⽳楤灳瑡档⁠胑近듐뻐볐턠₁뿐胑룐믐뻐뛐뗐뷐룐뗐볐മ⬊‭ꓐ믐냐돐怠ⴭ畲⵮楰数楬敮⁠듐뻐뇐냐닐믐뗐뷐퀠₲牠湵畟⹩祰⁠듐믐近퀠킷킰톿톃킁킺₰뫐뻐뷐닐뗐말뗐胑냐퀠킱킵₷䥕മ⬊‭鋐胑뗐볐뗐뷐뷐译뗐퀠톰톀킅킸톲₋苑뗐뿐뗐胑賑턠킄톾킀킼톸톀톃톎톂톁₏닐怠潬獧琯浥恰턠톀킏킴킾₼臑퀠톿킀킸킻킾킶킵킽킸킵₼퀨킿통킀킵킾톿킀킵킴킵톻톏톎톂톁₏蟑뗐胑뗐럐怠佔剉呟䵅彐剁䡃噉彅䥄恒⸩਍
+楤晦ⴠ札瑩愠䌯䅈䝎䱅䝏洮⁤⽢䡃乁䕇佌⹇摭਍敮⁷楦敬洠摯⁥〱㘰㐴਍湩敤⁸〰〰〰⸰搮㑣㡡ㄱ਍ⴭ‭搯癥港汵൬⬊⬫戠䌯䅈䝎䱅䝏洮൤䀊⁀〭〬⬠ⰱ〲䀠ീ⬊‣桃湡敧潬൧⬊਍䄫汬渠瑯扡敬挠慨杮獥琠⁯桴獩瀠潲敪瑣眠汩⁬敢搠捯浵湥整⁤湩琠楨⁳楦敬മ⬊਍含敨映牯慭⁴獩戠獡摥漠⁮䭛敥⁰⁡桃湡敧潬嵧栨瑴獰⼺欯敥慰档湡敧潬⹧潣⽭湥ㄯㄮ〮⤯ബ⬊湡⁤桴獩瀠潲敪瑣愠桤牥獥琠⁯卛浥湡楴⁣敖獲潩楮杮⡝瑨灴㩳⼯敳癭牥漮杲猯数⽣㉶〮〮栮浴⥬മ⬊਍⌫‣癛⸱⸰崰ⴠ㈠㈰ⴵ〱ㄭശ⬊਍⌫⌣䄠摤摥਍⴫퀠킘톽톁톂톀킃톺킆톸₏뿐뻐턠킁킱톾킀킺₵祐湉瑳污敬⵲듐룐臑苑胑룐뇐菑苑룐닐냐퀠₸뻐뿐룐臑냐뷐룐뗐턠킀톰킁킿킾킻킾킶킵킽톸₏믐뻐돐뻐닐퀠₲䕒䑁䕍മ⬊‭鿐뗐胑뗐볐뗐뷐뷐냐近퀠킾톺톀킃킶킵킽톸₏呠䥏归䥄偓呁䡃䑟剉⁠듐믐近턠킏킲킽킾킳₾菑뫐냐럐냐뷐룐近퀠킺톰킂킰킻킾킳₰뛐菑胑뷐냐믐뻐닐മ⬊‭ꇐ뻐뻐뇐觑뗐뷐룐뗐퀭톶톃킀킽킰₻뻐퀠킽통킁킾톾킂킲통톂톁킂킲킸₸룐볐뗐뷐룐턠킈킰킱킻킾톽₃퀨킿킾톴킁킺킰킷킺₰뿐뻐퀠킺톸킀킸킻킻톸킆⦵മ⬊਍⌫⌣䌠慨杮摥਍⴫퀠킡킾톱킀킰킽톽킋₹뇐룐뷐냐胑賑퀠킿통킀킵킸킼킵킽킾킲킰₽닐怠潴物牟獡牰摥汥湥橩⹥硥恥മ⬊‭䥕퀠₸뫐뻐뷐닐뗐말뗐胑퀠톿킀₸럐냐뿐菑臑뫐뗐퀠킸₷硥⁥닐臑뗐돐듐냐퀠킿톸톈톃₂믐뻐돐룐퀠₲池杯⽳楤灳瑡档⁠胑近듐뻐볐턠₁뿐胑룐믐뻐뛐뗐뷐룐뗐볐മ⬊‭ꓐ믐냐돐怠ⴭ畲⵮楰数楬敮⁠듐뻐뇐냐닐믐뗐뷐퀠₲牠湵畟⹩祰⁠듐믐近퀠킷킰톿톃킁킺₰뫐뻐뷐닐뗐말뗐胑냐퀠킱킵₷䥕മ⬊‭鋐胑뗐볐뗐뷐뷐译뗐퀠톰톀킅킸톲₋苑뗐뿐뗐胑賑턠킄톾킀킼톸톀톃톎톂톁₏닐怠潬獧琯浥恰턠톀킏킴킾₼臑퀠톿킀킸킻킾킶킵킽킸킵₼퀨킿통킀킵킾톿킀킵킴킵톻톏톎톂톁₏蟑뗐胑뗐럐怠佔剉呟䵅彐剁䡃噉彅䥄恒⸩਍⴫퀠킐톲킂킾킼톰킂톸킇통킁킺톰₏苑胑냐뷐臑믐룐苑뗐胑냐蛑룐近퀠킸톼킑₽뿐胑뻐뗐뫐苑뻐닐퀠₸彠汁恬턭킄킰킹킻킾₲닐퀠킻톰킂킸킽톸톆㮃퀠톿킀₸뫐뻐뷐蓑믐룐뫐苑뗐퀠킸톼킑₽臑뻐럐듐냐金苑臑近퀠킷킰킿톸톁₌닐퀠톶톃킀킽킰킻⺵਍

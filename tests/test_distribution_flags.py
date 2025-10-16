@@ -232,7 +232,11 @@ def test_process_project_folder_uses_weekly_folder_for_cyrillic_period(
 
     module.process_project_folder(project_dir)
 
-    pdf_name = "CT-DR-B-CS-ES-II.2.6-00-С-20250812-02_All.pdf"
+    original_pdf_name = "CT-DR-B-CS-ES-II.2.6-00-С-20250812-02_All.pdf"
+    pdf_name = (
+        module._transliterate_text(Path(original_pdf_name).stem)
+        + Path(original_pdf_name).suffix.lower()
+    )
     base_path = dest_root_dir / "2025" / "08.August" / "CS"
     pdf_parent = base_path / "pdf"
     native_parent = base_path / "Native"
@@ -246,4 +250,5 @@ def test_process_project_folder_uses_weekly_folder_for_cyrillic_period(
     native_dir = native_parent / target_folder
     assert (pdf_dir / pdf_name).exists()
     assert native_dir.exists()
-    assert (native_dir / f"{project_dir.name}.zip").exists()
+    expected_archive = module._transliterate_text(project_dir.name) + ".zip"
+    assert (native_dir / expected_archive).exists()

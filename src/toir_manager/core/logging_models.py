@@ -27,6 +27,7 @@ class TransferAction(str, Enum):
     COPY_TRA_SUB = "copy_tra_sub"
     CREATE_ARCHIVE = "create_archive"
     COPY_ARCHIVE = "copy_archive"
+    RENAME = "rename"
 
 
 @dataclass(slots=True)
