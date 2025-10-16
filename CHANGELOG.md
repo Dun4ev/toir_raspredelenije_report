@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Инструкция по сборке PyInstaller-дистрибутива и описание расположения логов в README.
 - Переменная окружения `TOIR_DISPATCH_DIR` для явного указания каталога журналов.
+- Сообщение-журнал о несоответствии имени шаблону (подсказка по кириллице).
 
 ### Changed
 - Собранный бинарь переименован в `toir_raspredelenije.exe`.

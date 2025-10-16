@@ -606,13 +606,28 @@ def process_project_folder(project_path: Path) -> None:
     """Обработать проектную папку из INBOX."""
     print(f"\n--- Обрабатываем проект: {project_path.name} ---")
 
-    all_matching_files = []
+    all_matching_files: list[Path] = []
+    invalid_files: list[Path] = []
     for file_path in project_path.glob("*_All*.[pP][dD][fF]"):
         if RE_FILENAME.match(file_path.name):
             all_matching_files.append(file_path)
+        else:
+            invalid_files.append(file_path)
 
     if not all_matching_files:
         print("  - [Предупреждение] Подходящих файлов не найдено. Пропускаем.")
+        for invalid in invalid_files:
+            message = (
+                f"Имя файла {invalid.name} не соответствует шаблону. "
+                "Проверьте латинские символы (A-Z, 0-9) и структуру имени."
+            )
+            _log_error(
+                TransferAction.COPY_DESTINATION,
+                invalid,
+                None,
+                message,
+                {"file_name": invalid.name, "project_folder": project_path.name},
+            )
         return
     if len(all_matching_files) > 1:
         print(
@@ -624,8 +639,17 @@ def process_project_folder(project_path: Path) -> None:
 
     match = RE_FILENAME.match(report_file.name)
     if not match:
-        print(
-            f"  - [Ошибка] Имя файла {report_file.name} не соответствует шаблону. Пропускаем."
+        message = (
+            f"Имя файла {report_file.name} не соответствует шаблону. "
+            "Проверьте, что используете латиницу (A-Z, 0-9) без кириллицы."
+        )
+        print(f"  - [Ошибка] {message}")
+        _log_error(
+            TransferAction.COPY_DESTINATION,
+            report_file,
+            None,
+            message,
+            {"file_name": report_file.name, "project_folder": project_path.name},
         )
         return
 

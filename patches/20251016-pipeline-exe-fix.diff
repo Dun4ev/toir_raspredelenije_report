@@ -1,341 +1,67 @@
 diff --git a/README.md b/README.md
-index 5401c87..8fbcbe5 100644
+index 8fbcbe5..7c9a00d 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,5 +1,7 @@
- # Сценарий `toir_raspredelenije.py`
- 
-+> **Важно:** Каждый PDF-файл должен находиться внутри индивидуальной подпапки. При обнаружении PDF непосредственно в корне входного каталога обработка прерывается с предупреждением.
-+
- ## Назначение
- Утилита распределяет входящие проектные PDF‑отчёты по целевым каталогам и формирует журналы операций. Ожидается, что имена файлов соответствуют шаблону `CT-DR-B-<part>-<object>-<TZ>-<period>-<date>-<revision>_All.pdf`. Все действия фиксируются в JSONL‑логах, которые затем можно просматривать через UI или отчёты.
- 
-@@ -10,6 +12,15 @@
- - `python -m toir_manager report --base-dir logs/dispatch --json` — сводный отчёт по выполненным операциям в формате JSON.
+@@ -13,6 +13,7 @@
  - UI использует стили: Primary (зелёные кнопки запуска), Danger (красные действия удаления), Secondary (серые вспомогательные).
  - Сохранённые пути UI лежат в `~/.toir_manager/ui_paths.json` (Windows: `%USERPROFILE%\\.toir_manager\\ui_paths.json`).
-+- `toir_raspredelenije.exe` — собранный PyInstaller-дистрибутив; двойной клик запускает UI, а режим `toir_raspredelenije.exe --run-pipeline` выполняет конвейер без интерфейса.
-+
-+## Сборка и дистрибуция
-+
-+- Активируйте виртуальное окружение и установите зависимости из `requirements.txt`.
-+- Выполните `pyinstaller ToirManager.spec --noconfirm`, чтобы получить готовый бинарь.
-+- Исполняемый файл располагается по пути `dist/toir_raspredelenije.exe`, рядом создаются нужные каталоги данных.
-+- Журналы распределения в собранной версии пишутся в `dist/logs/dispatch`.
-+- При необходимости изменить иконку, скрытые импорты или данные правьте `ToirManager.spec`.
+ - `toir_raspredelenije.exe` — собранный PyInstaller-дистрибутив; двойной клик запускает UI, а режим `toir_raspredelenije.exe --run-pipeline` выполняет конвейер без интерфейса.
++- Имена файлов должны соответствовать шаблону и содержать только латиницу (A-Z, 0-9). Кириллица или лишние символы приводят к пропуску отчёта с ошибкой в журнале.
  
- ## Основные каталоги
- - `INBOX_DIR` — входной каталог вида `/ГОД/ПапкаПроекта`; утилита рекурсивно ищет каталоги с `_All.pdf` и считает проектом именно каталог, где лежит файл. В каждом таком каталоге должен находиться **только один** `_All.pdf`; если положить несколько файлов, будет обработан лишь первый.
-@@ -22,6 +33,8 @@
-   - `CS` → поиск каталога по префиксу `CS_FOLDER_OVERRIDES` (например, `II.12*`).
- - `TEMP_ARCHIVE_DIR` — рабочая директория для временных zip, после копирования архив удаляется.
- - `TOIR_PART_FILTER` — ограничение по части: `LP`, `CS` или `CS/LP` (по умолчанию). Несоответствующие отчёты пропускаются без ошибок.
-+- `TOIR_DISPATCH_DIR` — путь к JSONL-журналам; по умолчанию `logs/dispatch` рядом с исполняемым кодом или бинарём. UI проставляет значение автоматически.
-+- `TOIR_TEMP_ARCHIVE_DIR` — временный каталог для сборки zip; по умолчанию `logs/temp` рядом с приложением. После успешной копии архив удаляется.
- - Для проектов CS каталоги `pdf` и `Native` подбираются по справочнику и создаются автоматически при необходимости; событие отражается в логах.
- - Период 'C'/'С' направляется в папку 'Корректирующее обслуживание' независимо от раскладки.
+ ## Сборка и дистрибуция
  
-@@ -30,7 +43,7 @@
- 2. Скрипт извлекает атрибуты имени файла (часть, объект, период, дата и т.д.).
- 3. PDF копируется в `NOTES_DIR`, `TRA_GST_DIR`, `TRA_SUB_APP_DIR`, профиль в `DEST_ROOT_DIR/pdf`.
- 4. Архив каталога проекта складывается в `DEST_ROOT_DIR/Native`.
--5. Все шаги логируются в `logs/dispatch/<run_id>.jsonl`.
-+5. Все шаги логируются в `logs/dispatch/<run_id>.jsonl` (в собранной версии каталог создаётся рядом с `toir_raspredelenije.exe`).
- 
- ## UI
- Журналы можно просматривать двумя способами:
-diff --git a/ToirManager.spec b/ToirManager.spec
-new file mode 100644
-index 0000000..efc71c6
---- /dev/null
-+++ b/ToirManager.spec
-@@ -0,0 +1,46 @@
-+# -*- mode: python ; coding: utf-8 -*-
-+from pathlib import Path
-+
-+try:
-+    PROJECT_ROOT = Path(__file__).resolve().parent
-+except NameError:  # PyInstaller executes .spec via exec(), __file__ отсутствует
-+    PROJECT_ROOT = Path.cwd()
-+SRC_DIR = PROJECT_ROOT / "src"
-+
-+
-+a = Analysis(
-+    ['run_ui.py'],
-+    pathex=[str(SRC_DIR)],
-+    binaries=[],
-+    datas=[('Template', 'Template')],
-+    hiddenimports=['toir_manager', 'toir_manager.ui.desktop', 'toir_raspredelenije'],
-+    hookspath=[],
-+    hooksconfig={},
-+    runtime_hooks=[],
-+    excludes=[],
-+    noarchive=False,
-+    optimize=0,
-+)
-+pyz = PYZ(a.pure)
-+
-+exe = EXE(
-+    pyz,
-+    a.scripts,
-+    a.binaries,
-+    a.datas,
-+    [],
-+    name='toir_raspredelenije',
-+    debug=False,
-+    bootloader_ignore_signals=False,
-+    strip=False,
-+    upx=True,
-+    upx_exclude=[],
-+    runtime_tmpdir=None,
-+    console=False,
-+    disable_windowed_traceback=False,
-+    argv_emulation=False,
-+    target_arch=None,
-+    codesign_identity=None,
-+    entitlements_file=None,
-+    icon=['assets\\icon_toir_raspredelenije_report.ico'],
-+)
-diff --git a/run_ui.py b/run_ui.py
-index e20d21d..fb04419 100644
---- a/run_ui.py
-+++ b/run_ui.py
-@@ -1,6 +1,4 @@
--﻿"""
--Простая точка входа для запуска Tkinter UI без настройки PYTHONPATH.
--"""
-+"""Обёртка запуска Tkinter UI с настройкой PYTHONPATH."""
- 
- from __future__ import annotations
- 
-@@ -16,22 +14,34 @@ from toir_manager.ui.desktop import launch  # noqa: E402
- 
- 
- def build_parser() -> argparse.ArgumentParser:
--    """Создать парсер аргументов для запуска UI."""
-+    """Создаёт парсер аргументов для UI и служебных режимов."""
- 
--    parser = argparse.ArgumentParser(description="Просмотр журналов распределения PDF")
-+    parser = argparse.ArgumentParser(
-+        description="Графический интерфейс распределения PDF"
-+    )
-     parser.add_argument(
-         "--base-dir",
-         type=Path,
-         default=Path("logs") / "dispatch",
-         help="Каталог с JSONL-журналами",
-     )
-+    parser.add_argument(
-+        "--run-pipeline",
-+        action="store_true",
-+        help="Запустить конвейер распределения PDF без UI.",
-+    )
-     return parser
- 
- 
- def main(argv: list[str] | None = None) -> int:
--    """Запустить Tkinter UI."""
-+    """Точка входа UI или конвейера в зависимости от аргументов."""
- 
-     args = build_parser().parse_args(argv)
-+    if args.run_pipeline:
-+        from toir_raspredelenije import main as pipeline_main  # noqa: E402
-+
-+        pipeline_main()
-+        return 0
-     launch(base_dir=args.base_dir)
-     return 0
- 
-diff --git a/src/toir_manager/services/log_writer.py b/src/toir_manager/services/log_writer.py
-index aa1d7f8..3a088e8 100644
---- a/src/toir_manager/services/log_writer.py
-+++ b/src/toir_manager/services/log_writer.py
-@@ -5,6 +5,7 @@
- from __future__ import annotations
- 
- import json
-+import os
- import threading
- from contextlib import AbstractContextManager
- from datetime import datetime
-@@ -26,7 +27,16 @@ class DispatchLogger(AbstractContextManager["DispatchLogger"]):
-         base_dir: Path | None = None,
-         run_id: str | None = None,
-     ) -> None:
--        self._base_dir = (base_dir or Path("logs") / "dispatch").resolve()
-+        env_override = os.environ.get("TOIR_DISPATCH_DIR")
-+        if base_dir is not None:
-+            candidate = Path(base_dir)
-+        elif env_override:
-+            candidate = Path(env_override).expanduser()
-+        else:
-+            candidate = Path("logs") / "dispatch"
-+        if not candidate.is_absolute():
-+            candidate = (Path.cwd() / candidate).resolve()
-+        self._base_dir = candidate
-         self._base_dir.mkdir(parents=True, exist_ok=True)
-         self._run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-         self._file_path = self._base_dir / f"{self._run_id}.jsonl"
-diff --git a/src/toir_manager/ui/desktop.py b/src/toir_manager/ui/desktop.py
-index 5325e1e..d80cec1 100644
---- a/src/toir_manager/ui/desktop.py
-+++ b/src/toir_manager/ui/desktop.py
-@@ -375,7 +375,20 @@ def launch(base_dir: Path | None = None) -> None:
-     if os.environ.get("APP_HEADLESS") == "1":
-         raise RuntimeError("UI запрещён в режиме APP_HEADLESS=1")
- 
--    root_dir = (base_dir or Path("logs") / "dispatch").resolve()
-+    base_root = (
-+        Path(sys.executable).resolve().parent
-+        if getattr(sys, "frozen", False)
-+        else REPO_ROOT
-+    )
-+    default_logs_dir = base_root / "logs" / "dispatch"
-+    if base_dir is None:
-+        root_dir = default_logs_dir
-+    else:
-+        candidate = Path(base_dir)
-+        root_dir = (
-+            candidate if candidate.is_absolute() else (base_root / candidate).resolve()
-+        )
-+    root_dir.mkdir(parents=True, exist_ok=True)
-     result_queue: queue.Queue[tuple[int, str, str]] = queue.Queue()
- 
-     root = tk.Tk()
-@@ -483,15 +496,16 @@ def launch(base_dir: Path | None = None) -> None:
-     ttk.Label(control_tab, text="Фильтр по части").grid(
-         row=2, column=0, sticky=tk.W, pady=(8, 2)
-     )
--    part_filter_combo = ttk.Combobox(
--        control_tab,
--        values=PART_FILTER_CHOICES,
--        textvariable=part_filter_var,
--        state="readonly",
--        width=12,
--    )
--    part_filter_combo.grid(row=3, column=0, sticky=tk.W)
--    part_filter_combo.bind("<<ComboboxSelected>>", lambda _event: persist_paths())
-+    part_filter_group = ttk.Frame(control_tab)
-+    part_filter_group.grid(row=3, column=0, sticky=tk.W)
-+    for idx, choice in enumerate(PART_FILTER_CHOICES):
-+        ttk.Radiobutton(
-+            part_filter_group,
-+            text=choice,
-+            value=choice,
-+            variable=part_filter_var,
-+            command=persist_paths,
-+        ).grid(row=0, column=idx, padx=(0 if idx == 0 else 12, 0))
- 
-     ttk.Label(control_tab, text="Назначения").grid(
-         row=4, column=0, sticky=tk.W, pady=(10, 2)
-@@ -652,7 +666,11 @@ def launch(base_dir: Path | None = None) -> None:
-         env = os.environ.copy()
-         env.setdefault("PYTHONIOENCODING", "utf-8")
-         env.update(env_overrides)
--        cmd = [sys.executable, str(PIPELINE_SCRIPT)]
-+        env["TOIR_DISPATCH_DIR"] = str(root_dir)
-+        if getattr(sys, "frozen", False):
-+            cmd = [sys.executable, "--run-pipeline"]
-+        else:
-+            cmd = [sys.executable, str(PIPELINE_SCRIPT)]
-         process = subprocess.run(
-             cmd,
-             capture_output=True,
-@@ -673,8 +691,34 @@ def launch(base_dir: Path | None = None) -> None:
-         if stderr:
-             append_log("\n[stderr]\n" + stderr, tag="stderr")
-         if returncode == 0:
--            status_var.set("Готово")
--            messagebox.showinfo("Распределение", "Обработка завершена успешно.")
-+            warnings: list[str] = []
-+            errors: list[str] = []
-+            infos: list[str] = []
-+            for raw_line in (stdout or "").splitlines():
-+                line = raw_line.strip()
-+                if not line:
-+                    continue
-+                if "[Ошибка]" in line or "[ERROR]" in line:
-+                    errors.append(line)
-+                elif "[Предупреждение]" in line or "[WARNING]" in line:
-+                    warnings.append(line)
-+                elif "[Инфо]" in line and "Создаём каталог" in line:
-+                    infos.append(line)
-+            if errors:
-+                status_var.set("Завершено с ошибками")
-+                payload = "\n".join(errors[:5])
-+                messagebox.showerror("Распределение", payload)
-+            elif warnings:
-+                status_var.set("Завершено с предупреждениями")
-+                summary_lines = warnings + infos
-+                payload = "\n".join(summary_lines[:5])
-+                messagebox.showwarning("Распределение", payload)
-+            else:
-+                status_var.set("Готово")
-+                if infos:
-+                    messagebox.showinfo("Распределение", "\n".join(infos[:5]))
-+                else:
-+                    messagebox.showinfo("Распределение", "Обработка завершена успешно.")
-             refresh_runs()
-         else:
-             status_var.set("Завершено с ошибками")
 diff --git a/toir_raspredelenije.py b/toir_raspredelenije.py
-index 87e1cd5..4393dd3 100644
+index 4393dd3..e4b9488 100644
 --- a/toir_raspredelenije.py
 +++ b/toir_raspredelenije.py
-@@ -62,9 +62,19 @@ DEST_ROOT_DIR = Path(
- )
+@@ -606,13 +606,28 @@ def process_project_folder(project_path: Path) -> None:
+     """Обработать проектную папку из INBOX."""
+     print(f"\n--- Обрабатываем проект: {project_path.name} ---")
  
- # 6. Временная папка для создания архивов (может совпадать с DEST_ROOT_DIR)
--TEMP_ARCHIVE_DIR = Path(
--    r"D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel"
--)
-+
-+
-+def _default_temp_archive_dir() -> Path:
-+    """Возвращает каталог для временных архивов рядом с приложением."""
-+
-+    if getattr(sys, "frozen", False):
-+        base_root = Path(sys.executable).resolve().parent
-+    else:
-+        base_root = Path(__file__).resolve().parent
-+    return base_root / "logs" / "temp"
-+
-+
-+TEMP_ARCHIVE_DIR = _default_temp_archive_dir()
+-    all_matching_files = []
++    all_matching_files: list[Path] = []
++    invalid_files: list[Path] = []
+     for file_path in project_path.glob("*_All*.[pP][dD][fF]"):
+         if RE_FILENAME.match(file_path.name):
+             all_matching_files.append(file_path)
++        else:
++            invalid_files.append(file_path)
  
+     if not all_matching_files:
+         print("  - [Предупреждение] Подходящих файлов не найдено. Пропускаем.")
++        for invalid in invalid_files:
++            message = (
++                f"Имя файла {invalid.name} не соответствует шаблону. "
++                "Проверьте латинские символы (A-Z, 0-9) и структуру имени."
++            )
++            _log_error(
++                TransferAction.COPY_DESTINATION,
++                invalid,
++                None,
++                message,
++                {"file_name": invalid.name, "project_folder": project_path.name},
++            )
+         return
+     if len(all_matching_files) > 1:
+         print(
+@@ -624,8 +639,17 @@ def process_project_folder(project_path: Path) -> None:
  
- def _override_path(default: Path, env_name: str) -> Path:
-@@ -127,6 +137,7 @@ TRA_GST_DIR = _override_path(TRA_GST_DIR, "TOIR_TRA_GST_DIR")
- TRA_SUB_APP_DIR = _override_path(TRA_SUB_APP_DIR, "TOIR_TRA_SUB_APP_DIR")
- DEST_ROOT_DIR = _override_path(DEST_ROOT_DIR, "TOIR_DEST_ROOT_DIR")
- TEMP_ARCHIVE_DIR = _override_path(TEMP_ARCHIVE_DIR, "TOIR_TEMP_ARCHIVE_DIR")
-+TEMP_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+     match = RE_FILENAME.match(report_file.name)
+     if not match:
+-        print(
+-            f"  - [Ошибка] Имя файла {report_file.name} не соответствует шаблону. Пропускаем."
++        message = (
++            f"Имя файла {report_file.name} не соответствует шаблону. "
++            "Проверьте, что используете латиницу (A-Z, 0-9) без кириллицы."
++        )
++        print(f"  - [Ошибка] {message}")
++        _log_error(
++            TransferAction.COPY_DESTINATION,
++            report_file,
++            None,
++            message,
++            {"file_name": report_file.name, "project_folder": project_path.name},
+         )
+         return
  
- # 7. Путь к файлу-справочнику
- TZ_FILE_PATH = Path("Template/TZ_glob.xlsx")
-@@ -902,6 +913,24 @@ def main(inbox_dir: Path | None = None) -> None:
-             if not target_inbox.exists():
-                 print(f"[Ошибка] Входной каталог отсутствует: {target_inbox}")
-                 return
-+            stray_pdfs = [
-+                item
-+                for item in target_inbox.iterdir()
-+                if item.is_file() and item.suffix.lower() == ".pdf"
-+            ]
-+            if stray_pdfs:
-+                print(
-+                    "[Предупреждение] В корне входного каталога обнаружены PDF-файлы. "
-+                    "Каждый отчёт должен лежать в отдельной папке. Обработка остановлена."
-+                )
-+                for pdf_path in stray_pdfs:
-+                    _log_error(
-+                        TransferAction.COPY_DESTINATION,
-+                        pdf_path,
-+                        None,
-+                        "Файл расположен в корне INBOX. Требуется отдельная папка для каждого отчёта.",
-+                    )
-+                return
- 
-             project_folders = find_project_folders(target_inbox)
-             if not project_folders:
-楤晦ⴠ札瑩愠䌯䅈䝎䱅䝏洮⁤⽢䡃乁䕇佌⹇摭਍敮⁷楦敬洠摯⁥〱㘰㐴਍湩敤⁸〰〰〰⸰㌮愶㥣摢਍ⴭ‭搯癥港汵൬⬊⬫戠䌯䅈䝎䱅䝏洮൤䀊⁀〭〬⬠ⰱ㠱䀠ീ⬊‣桃湡敧潬൧⬊਍䄫汬渠瑯扡敬挠慨杮獥琠⁯桴獩瀠潲敪瑣眠汩⁬敢搠捯浵湥整⁤湩琠楨⁳楦敬മ⬊਍含敨映牯慭⁴獩戠獡摥漠⁮䭛敥⁰⁡桃湡敧潬嵧栨瑴獰⼺欯敥慰档湡敧潬⹧潣⽭湥ㄯㄮ〮⤯ബ⬊湡⁤桴獩瀠潲敪瑣愠桤牥獥琠⁯卛浥湡楴⁣敖獲潩楮杮⡝瑨灴㩳⼯敳癭牥漮杲猯数⽣㉶〮〮栮浴⥬മ⬊਍⌫‣癛⸱⸰崰ⴠ㈠㈰ⴵ〱ㄭശ⬊਍⌫⌣䄠摤摥਍⴫퀠킘톽톁톂톀킃톺킆톸₏뿐뻐턠킁킱톾킀킺₵祐湉瑳污敬⵲듐룐臑苑胑룐뇐菑苑룐닐냐퀠₸뻐뿐룐臑냐뷐룐뗐턠킀톰킁킿킾킻킾킶킵킽톸₏믐뻐돐뻐닐퀠₲䕒䑁䕍മ⬊‭鿐뗐胑뗐볐뗐뷐뷐냐近퀠킾톺톀킃킶킵킽톸₏呠䥏归䥄偓呁䡃䑟剉⁠듐믐近턠킏킲킽킾킳₾菑뫐냐럐냐뷐룐近퀠킺톰킂킰킻킾킳₰뛐菑胑뷐냐믐뻐닐മ⬊਍⌫⌣䌠慨杮摥਍⴫퀠킡킾톱킀킰킽톽킋₹뇐룐뷐냐胑賑퀠킿통킀킵킸킼킵킽킾킲킰₽닐怠潴物牟獡牰摥汥湥橩⹥硥恥മ⬊‭䥕퀠₸뫐뻐뷐닐뗐말뗐胑퀠톿킀₸럐냐뿐菑臑뫐뗐퀠킸₷硥⁥닐臑뗐돐듐냐퀠킿톸톈톃₂믐뻐돐룐퀠₲池杯⽳楤灳瑡档⁠胑近듐뻐볐턠₁뿐胑룐믐뻐뛐뗐뷐룐뗐볐മ⬊‭ꓐ믐냐돐怠ⴭ畲⵮楰数楬敮⁠듐뻐뇐냐닐믐뗐뷐퀠₲牠湵畟⹩祰⁠듐믐近퀠킷킰톿톃킁킺₰뫐뻐뷐닐뗐말뗐胑냐퀠킱킵₷䥕മ⬊‭鋐胑뗐볐뗐뷐뷐译뗐퀠톰톀킅킸톲₋苑뗐뿐뗐胑賑턠킄톾킀킼톸톀톃톎톂톁₏닐怠潬獧琯浥恰턠톀킏킴킾₼臑퀠톿킀킸킻킾킶킵킽킸킵₼퀨킿통킀킵킾톿킀킵킴킵톻톏톎톂톁₏蟑뗐胑뗐럐怠佔剉呟䵅彐剁䡃噉彅䥄恒⸩਍
+楤晦ⴠ札瑩愠䌯䅈䝎䱅䝏洮⁤⽢䡃乁䕇佌⹇摭਍敮⁷楦敬洠摯⁥〱㘰㐴਍湩敤⁸〰〰〰⸰㈮愳㔶户਍ⴭ‭搯癥港汵൬⬊⬫戠䌯䅈䝎䱅䝏洮൤䀊⁀〭〬⬠ⰱ㤱䀠ീ⬊‣桃湡敧潬൧⬊਍䄫汬渠瑯扡敬挠慨杮獥琠⁯桴獩瀠潲敪瑣眠汩⁬敢搠捯浵湥整⁤湩琠楨⁳楦敬മ⬊਍含敨映牯慭⁴獩戠獡摥漠⁮䭛敥⁰⁡桃湡敧潬嵧栨瑴獰⼺欯敥慰档湡敧潬⹧潣⽭湥ㄯㄮ〮⤯ബ⬊湡⁤桴獩瀠潲敪瑣愠桤牥獥琠⁯卛浥湡楴⁣敖獲潩楮杮⡝瑨灴㩳⼯敳癭牥漮杲猯数⽣㉶〮〮栮浴⥬മ⬊਍⌫‣癛⸱⸰崰ⴠ㈠㈰ⴵ〱ㄭശ⬊਍⌫⌣䄠摤摥਍⴫퀠킘톽톁톂톀킃톺킆톸₏뿐뻐턠킁킱톾킀킺₵祐湉瑳污敬⵲듐룐臑苑胑룐뇐菑苑룐닐냐퀠₸뻐뿐룐臑냐뷐룐뗐턠킀톰킁킿킾킻킾킶킵킽톸₏믐뻐돐뻐닐퀠₲䕒䑁䕍മ⬊‭鿐뗐胑뗐볐뗐뷐뷐냐近퀠킾톺톀킃킶킵킽톸₏呠䥏归䥄偓呁䡃䑟剉⁠듐믐近턠킏킲킽킾킳₾菑뫐냐럐냐뷐룐近퀠킺톰킂킰킻킾킳₰뛐菑胑뷐냐믐뻐닐മ⬊‭ꇐ뻐뻐뇐觑뗐뷐룐뗐퀭톶톃킀킽킰₻뻐퀠킽통킁킾톾킂킲통톂톁킂킲킸₸룐볐뗐뷐룐턠킈킰킱킻킾톽₃퀨킿킾톴킁킺킰킷킺₰뿐뻐퀠킺톸킀킸킻킻톸킆⦵മ⬊਍⌫⌣䌠慨杮摥਍⴫퀠킡킾톱킀킰킽톽킋₹뇐룐뷐냐胑賑퀠킿통킀킵킸킼킵킽킾킲킰₽닐怠潴物牟獡牰摥汥湥橩⹥硥恥മ⬊‭䥕퀠₸뫐뻐뷐닐뗐말뗐胑퀠톿킀₸럐냐뿐菑臑뫐뗐퀠킸₷硥⁥닐臑뗐돐듐냐퀠킿톸톈톃₂믐뻐돐룐퀠₲池杯⽳楤灳瑡档⁠胑近듐뻐볐턠₁뿐胑룐믐뻐뛐뗐뷐룐뗐볐മ⬊‭ꓐ믐냐돐怠ⴭ畲⵮楰数楬敮⁠듐뻐뇐냐닐믐뗐뷐퀠₲牠湵畟⹩祰⁠듐믐近퀠킷킰톿톃킁킺₰뫐뻐뷐닐뗐말뗐胑냐퀠킱킵₷䥕മ⬊‭鋐胑뗐볐뗐뷐뷐译뗐퀠톰톀킅킸톲₋苑뗐뿐뗐胑賑턠킄톾킀킼톸톀톃톎톂톁₏닐怠潬獧琯浥恰턠톀킏킴킾₼臑퀠톿킀킸킻킾킶킵킽킸킵₼퀨킿통킀킵킾톿킀킵킴킵톻톏톎톂톁₏蟑뗐胑뗐럐怠佔剉呟䵅彐剁䡃噉彅䥄恒⸩਍
