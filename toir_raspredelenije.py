@@ -17,13 +17,13 @@ from toir_manager.core.logging_models import (  # noqa: E402
 from toir_manager.services.log_writer import DispatchLogger  # noqa: E402
 
 # Для работы с Excel требуется установка библиотеки openpyxl: pip install openpyxl
+OPENPYXL_AVAILABLE = True
+OPENPYXL_IMPORT_MESSAGE = "[КРИТИЧЕСКАЯ ОШИБКА] Библиотека openpyxl не найдена. Пожалуйста, установите ее: pip install openpyxl"
 try:
-    from openpyxl import load_workbook
+    from openpyxl import load_workbook  # type: ignore[import-untyped]
 except ImportError:
-    print(
-        "[КРИТИЧЕСКАЯ ОШИБКА] Библиотека openpyxl не найдена. Пожалуйста, установите ее: pip install openpyxl"
-    )
-    sys.exit(1)
+    load_workbook = None  # type: ignore[assignment]
+    OPENPYXL_AVAILABLE = False
 
 # Настройка UTF-8 вывода в Windows-консоли
 try:
@@ -496,6 +496,10 @@ def find_suffix_in_tz_file(lookup_key: str) -> str | None:
     """
     Ищет индекс в файле TZ_glob.xlsx и возвращает суффикс.
     """
+    if load_workbook is None:
+        print(OPENPYXL_IMPORT_MESSAGE)
+        return None
+
     if not TZ_FILE_PATH.exists():
         print(f"  - [ОШИБКА] Файл-справочник не найден: {TZ_FILE_PATH}")
         return None
@@ -1130,8 +1134,11 @@ def main(inbox_dir: Path | None = None) -> None:
 
 
 if __name__ == "__main__":
+    if not OPENPYXL_AVAILABLE:
+        print(OPENPYXL_IMPORT_MESSAGE)
+        sys.exit(1)
     override = os.environ.get("TOIR_INBOX_DIR")
-    override_path = Path(override).resolve() if override else None
-    main(inbox_dir=override_path)
-if __name__ == "__main__":
-    main()
+    if override:
+        main(inbox_dir=Path(override).resolve())
+    else:
+        main()
