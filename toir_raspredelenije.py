@@ -648,20 +648,27 @@ def process_special_grouping_for_sub_app(
 
 
 def normalize_object_name(object_name: str) -> str:
-    """
-    Нормализует имя объекта, удаляя ведущий ноль для однозначных номеров.
-    Пример: BVS05 -> BVS5. BVS10 -> BVS10.
-    """
-    # Ищем шаблон: BVS, затем 0, затем одна цифра от 1 до 9
-    match = re.match(r"^(BVS)0([1-9])$", object_name, re.IGNORECASE)
-    if match:
-        # Собираем новое имя из первой группы (BVS) и второй (цифра)
-        normalized_name = match.group(1) + match.group(2)
+    """Удаляет ведущие нули из числового суффикса кода объекта."""
+
+    match = re.match(
+        r"^(?P<prefix>[A-Z0-9]*?)(?P<digits>\d+)$",
+        object_name,
+        re.IGNORECASE,
+    )
+    if not match:
+        return object_name
+
+    prefix = match.group("prefix")
+    digits = match.group("digits")
+    normalized_digits = digits.lstrip("0") or "0"
+    normalized_name = prefix + normalized_digits
+
+    if normalized_name != object_name:
         print(
             f"  - [ИНФО] Имя объекта нормализовано: {object_name} -> {normalized_name}"
         )
-        return normalized_name
-    return object_name
+
+    return normalized_name
 
 
 def copy_to_gst_folder(

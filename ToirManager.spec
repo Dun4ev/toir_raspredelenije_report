@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
 
-VERSION = "1.1"
+VERSION = "1.2"
 
 try:
     PROJECT_ROOT = Path(__file__).resolve().parent
