@@ -1,66 +1,196 @@
-# Сценарий `toir_raspredelenije.py`
+# TOIR PDF Distribution Manager
 
-> **Важно:** Каждый PDF-файл должен находиться внутри индивидуальной подпапки. При обнаружении PDF непосредственно в корне входного каталога обработка прерывается с предупреждением.
+[English](README.md) | [Русский](README.ru.md)
 
-## Назначение
-Утилита распределяет входящие проектные PDF‑отчёты по целевым каталогам и формирует журналы операций. Ожидается, что имена файлов соответствуют шаблону `CT-DR-B-<part>-<object>-<TZ>-<period>-<date>-<revision>_All.pdf`. Все действия фиксируются в JSONL‑логах, которые затем можно просматривать через UI или отчёты.
+A Windows-oriented Python utility for distributing maintenance PDF reports across destination folders, creating project archives, and recording every operation in JSONL logs. It includes a Tkinter desktop interface and a command-line log report.
 
-## Быстрый старт
-- `python toir_raspredelenije.py` — запуск распределения для каталога по умолчанию (`INBOX_DIR`).
-- `TOIR_INBOX_DIR=... python toir_raspredelenije.py` — однократный запуск с переопределённым путём до входных файлов.
-- `python run_ui.py --base-dir logs/dispatch` — графический интерфейс на Tkinter для запуска пайплайна и просмотра журналов.
-- `python -m toir_manager report --base-dir logs/dispatch --json` — сводный отчёт по выполненным операциям в формате JSON.
-- UI использует стили: Primary (зелёные кнопки запуска), Danger (красные действия удаления), Secondary (серые вспомогательные).
-- Сохранённые пути UI лежат в `~/.toir_manager/ui_paths.json` (Windows: `%USERPROFILE%\\.toir_manager\\ui_paths.json`).
-- `toir_raspredelenije.exe` — собранный PyInstaller-дистрибутив; двойной клик запускает UI, а режим `toir_raspredelenije.exe --run-pipeline` выполняет конвейер без интерфейса.
-- Имена файлов должны соответствовать шаблону и содержать только латиницу (A-Z, 0-9). При обнаружении кириллицы система выполняет автоматическую транслитерацию, а при невозможности — фиксирует ошибку и пропускает отчёт.
+> [!IMPORTANT]
+> Each report must be placed in its own subfolder inside the input directory. If PDF files are found directly in the INBOX root, processing stops with a warning.
 
-## Сборка и дистрибуция
+## Interface
 
-- Активируйте виртуальное окружение и установите зависимости из `requirements.txt`.
-- Выполните `pyinstaller ToirManager.spec --noconfirm`, чтобы получить готовый бинарь.
-- Исполняемый файл располагается по пути `dist/toir_raspredelenije.exe`, рядом создаются нужные каталоги данных.
-- Журналы распределения в собранной версии пишутся в `dist/logs/dispatch`.
-- При необходимости изменить иконку, скрытые импорты или данные правьте `ToirManager.spec`.
+The interface supports English and Russian. Use the language selector in the upper-right corner; the selection is saved for the next launch.
 
-## Основные каталоги
-- `INBOX_DIR` — входной каталог вида `/ГОД/ПапкаПроекта`; утилита рекурсивно ищет каталоги с `_All.pdf` и считает проектом именно каталог, где лежит файл. В каждом таком каталоге должен находиться **только один** `_All.pdf`; если положить несколько файлов, будет обработан лишь первый.
-- `NOTES_DIR` — место хранения копий отчётов для примечаний.
-- `TRA_GST_DIR` — раскладка по неделям: каталоги `YYYY_TWW_GST`, где `WW` — номер ISO‑недели. При конфликте имён выбирается следующая неделя.
-- `TRA_SUB_APP_DIR` — дополнительная структура, формируемая по ключу `<tz_index>-<reserved>-<period>`; для периодов `C` используется справочник `Template/TZ_glob.xlsx`.
-- `DEST_ROOT_DIR` — итоговая структура `/Год/Месяц/<part>/{pdf,Native}/...`:
-  - Период `C` → каталог «Корректирующее обслуживание».
-  - `LP` → папки по объектам; ведущие нули из числового суффикса удаляются автоматически (`BVS05` → `BVS5`, `GMS01` → `GMS1`).
-  - `CS` → поиск каталога по префиксу `CS_FOLDER_OVERRIDES` (например, `II.12*`).
-- `TEMP_ARCHIVE_DIR` — рабочая директория для временных zip, после копирования архив удаляется.
-- `TOIR_PART_FILTER` — ограничение по части: `LP`, `CS` или `CS/LP` (по умолчанию). Несоответствующие отчёты пропускаются без ошибок.
-- `TOIR_DISPATCH_DIR` — путь к JSONL-журналам; по умолчанию `logs/dispatch` рядом с исполняемым кодом или бинарём. UI проставляет значение автоматически.
-- `TOIR_TEMP_ARCHIVE_DIR` — временный каталог для сборки zip; по умолчанию `logs/temp` рядом с приложением. После успешной копии архив удаляется.
-- Для проектов CS каталоги `pdf` и `Native` подбираются по справочнику и создаются автоматически при необходимости; событие отражается в логах.
-- Период 'C'/'С' направляется в папку 'Корректирующее обслуживание' независимо от раскладки.
+### Distribution
 
-## Схема работы
-1. Входной `_All` файл помещается в нужную подпапку `INBOX_DIR`.
-2. Скрипт извлекает атрибуты имени файла (часть, объект, период, дата и т.д.).
-3. PDF копируется в `NOTES_DIR`, `TRA_GST_DIR`, `TRA_SUB_APP_DIR`, профиль в `DEST_ROOT_DIR/pdf`.
-4. Архив каталога проекта складывается в `DEST_ROOT_DIR/Native`.
-5. Все шаги логируются в `logs/dispatch/<run_id>.jsonl` (в собранной версии каталог создаётся рядом с `toir_raspredelenije.exe`).
+Configure the INBOX and destination folders, select the `CS`/`LP` part filter, enable the required destinations, and start distribution.
 
-## UI
-Журналы можно просматривать двумя способами:
-- Вкладка «Распределение» (`run_ui.py`): запуск обработки, просмотр stdout/stderr, открытие целевых папок.
-- Выпадающий список в блоке запуска позволяет выбрать фильтр части (`LP`/`CS`/`CS/LP`); выбор сохраняется и влияет на `TOIR_PART_FILTER`.
-- Вкладка «Журналы»: список прогонов, просмотр таблицы файлов, массовое открытие директорий и очистка старых логов.
+![Distribution tab](assets/image.png)
 
-### План доработки INBOX
-- Реализован рекурсивный обход `00_Inbox`: проект идентифицируется по каталогу, в котором найден `_All.pdf`.
-- Переработать архивацию и логирование: гарантировать уникальные имена архивов и метаданных для каждого найденного отчёта в глубине.
-- Актуализировать копирование в NOTES/TRA_GST/TRA_SUB/DEST_ROOT, чтобы корректно работать с новым контекстом и исключить коллизии путей.
-- Подготовить тесты для вложенных структур и описать миграцию пользователей на новую схему раскладки.
+### Logs
 
-### Вопросы на согласование
-- Поддерживается произвольная глубина вложенности INBOX; ограничение по уровням введём отдельной задачей при появлении требований.
-- Следует ли обрабатывать все `_All.pdf` в одной папке (несколько отчётов проекта) или лучше сигнализировать об ошибке?
-- Какой формат архивов ожидается при нескольких файлах: один архив на каждый PDF или общий архив родительского каталога?
-- Как адаптировать логику очистки INBOX в UI/CLI с появлением множественных подпапок?
+Review previous runs, inspect operation status and paths, open destination folders, or remove old log files.
 
+![Logs tab](<assets/image copy.png>)
+
+## Features
+
+- Recursively finds project folders containing `_All.pdf` files.
+- Parses report attributes from the filename.
+- Supports `CS`, `LP`, or combined `CS/LP` filtering.
+- Copies reports to NOTES, TRA_GST, TRA_SUB_APP, and the final PDF structure.
+- Creates ZIP archives of source project folders in the `Native` structure.
+- Writes thread-safe JSONL operation logs for the desktop UI and CLI.
+- Remembers paths, destination toggles, the part filter, and the selected UI language.
+- Prevents the desktop UI from starting when `APP_HEADLESS=1`.
+
+## Requirements
+
+- Python 3.10 or newer.
+- `openpyxl` for reading `Template/TZ_glob.xlsx`.
+- Tkinter, included with standard Windows Python installations.
+
+Create and activate a virtual environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install openpyxl
+```
+
+For development and testing:
+
+```powershell
+python -m pip install pytest ruff black mypy types-openpyxl
+```
+
+## Quick start
+
+Start the desktop application:
+
+```powershell
+python run_ui.py --base-dir logs/dispatch
+```
+
+Run the distribution pipeline directly:
+
+```powershell
+python toir_raspredelenije.py
+```
+
+Override the INBOX directory for one PowerShell session:
+
+```powershell
+$env:TOIR_INBOX_DIR = "D:\Reports\00_Inbox"
+python toir_raspredelenije.py
+```
+
+Show the JSON log summary:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m toir_manager report --base-dir logs/dispatch --json
+```
+
+## Input filename format
+
+Report names must follow this pattern:
+
+```text
+CT-DR-B-<part>-<object>-<TZ>-<period>-<date>-<revision>_All.pdf
+```
+
+Example:
+
+```text
+CT-DR-B-CS-ES-II.2.6-00-C-20250812-02_All.pdf
+```
+
+Use Latin characters (`A-Z`, `0-9`) in report names. When Cyrillic characters are detected, the application attempts automatic transliteration. If a safe conversion is not possible, the anomaly is logged and the report is skipped.
+
+## Processing workflow
+
+1. The application recursively scans `INBOX_DIR` for project folders containing `_All.pdf`.
+2. It parses the part, object, period, date, revision, and other filename attributes.
+3. It applies the selected `TOIR_PART_FILTER`.
+4. Enabled copies are written to NOTES, TRA_GST, TRA_SUB_APP, and `DEST_ROOT_DIR/pdf`.
+5. A ZIP archive of the project folder is created and copied to `DEST_ROOT_DIR/Native`.
+6. Every action is written to `logs/dispatch/<run_id>.jsonl`.
+
+A project folder should contain only one `_All.pdf`. If several matching files are present, only the first one is processed.
+
+## Directories and environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `TOIR_INBOX_DIR` | Input directory. The project is the folder in which `_All.pdf` is found. |
+| `TOIR_NOTES_DIR` | Destination for report copies used as notes. |
+| `TOIR_TRA_GST_DIR` | Weekly structure using `YYYY_TWW_GST` folders. |
+| `TOIR_TRA_SUB_APP_DIR` | Additional grouping based on `<tz_index>-<reserved>-<period>`. |
+| `TOIR_DEST_ROOT_DIR` | Root of the final `Year/Month/Part/{pdf,Native}` structure. |
+| `TOIR_TEMP_ARCHIVE_DIR` | Temporary directory used while ZIP archives are created. |
+| `TOIR_DISPATCH_DIR` | JSONL log directory. The UI sets it automatically. |
+| `TOIR_PART_FILTER` | Part filter: `LP`, `CS`, or `CS/LP`. Invalid values fall back to `CS/LP`. |
+| `TOIR_ENABLE_NOTES` | Enables or disables NOTES distribution. |
+| `TOIR_ENABLE_TRA_GST` | Enables or disables TRA_GST distribution. |
+| `TOIR_ENABLE_TRA_SUB_APP` | Enables or disables TRA_SUB_APP distribution. |
+| `TOIR_ENABLE_DEST_ROOT` | Enables or disables final PDF/Native distribution. |
+| `APP_HEADLESS` | Set to `1` to prevent the graphical interface from starting. |
+
+UI settings are stored in `~/.toir_manager/ui_paths.json`. On Windows this normally resolves to `%USERPROFILE%\.toir_manager\ui_paths.json`.
+
+## Destination rules
+
+- `TRA_GST_DIR` uses ISO week folders. If the expected folder already contains an archive, the application selects the next available week.
+- `TRA_SUB_APP_DIR` uses `Template/TZ_glob.xlsx` for suffix lookup where required.
+- `DEST_ROOT_DIR` creates a `Year/Month/<part>/{pdf,Native}` structure.
+- Period `C` or Cyrillic `С` is routed to the existing `Корректирующее обслуживание` business folder.
+- LP object suffixes are normalized by removing leading zeroes, for example `BVS05` becomes `BVS5`.
+- CS folders are selected using configured prefixes such as `CS_FOLDER_OVERRIDES`; missing `pdf` and `Native` folders are created when required.
+
+## Logs
+
+Each pipeline run creates `logs/dispatch/<run_id>.jsonl`. The desktop Logs tab displays these records in a table. The CLI can produce a human-readable or JSON summary.
+
+The desktop interface also provides:
+
+- opening the selected or all destination folders;
+- removing all log files except the latest one;
+- deleting successfully processed INBOX project folders after confirmation;
+- viewing stdout, warnings, and errors from the active run.
+
+## Building the Windows executable
+
+Install PyInstaller in the active virtual environment and build using the included specification:
+
+```powershell
+python -m pip install pyinstaller
+pyinstaller ToirManager.spec --noconfirm
+```
+
+The executable is created at `dist/toir_raspredelenije.exe`. Double-click it to open the desktop interface or run the pipeline without the UI:
+
+```powershell
+.\dist\toir_raspredelenije.exe --run-pipeline
+```
+
+In the packaged application, distribution logs are created under `dist/logs/dispatch`.
+
+## Project structure
+
+```text
+repo/
+|- toir_raspredelenije.py      # distribution pipeline
+|- run_ui.py                   # desktop entry point
+|- ToirManager.spec            # PyInstaller configuration
+|- src/toir_manager/
+|  |- core/                    # domain and logging models
+|  |- services/                # settings and log IO
+|  |- cli/                     # command-line reports
+|  |- ui/                      # Tkinter interface and translations
+|- tests/                      # pytest suite
+|- Template/                   # lookup workbook and templates
+|- logs/dispatch/              # JSONL run logs
+|- assets/                     # application icon and screenshots
+```
+
+## Validation
+
+Run the project checks from the activated virtual environment:
+
+```powershell
+python -m ruff check src/toir_manager/ui/desktop.py src/toir_manager/ui/translations.py tests/test_ui_translations.py
+python -m black --check .
+python -m mypy src run_ui.py toir_raspredelenije.py tests
+python -m pytest -q
+```

@@ -1,25 +1,26 @@
-﻿"""
+"""
 Настольный интерфейс на Tkinter: запуск распределения и просмотр журналов.
 """
 
 from __future__ import annotations
 
 import importlib
-import shutil
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
 import tkinter as tk
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Callable, Iterable
 
 from toir_manager.core.logging_models import TransferLogEntry, TransferStatus
 from toir_manager.services.log_reader import list_runs, summarize_entries
 from toir_manager.services.log_writer import iter_run_logs
 from toir_manager.services.settings_store import load_ui_paths, save_ui_paths
+from toir_manager.ui.translations import LANGUAGE_NAMES, normalize_language, translate
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -236,12 +237,15 @@ def _collect_processed_projects(
 
 
 def _confirm_cleanup_dialog(
-    parent: tk.Tk, inbox_path: Path, candidates: list[Path]
+    parent: tk.Tk,
+    inbox_path: Path,
+    candidates: list[Path],
+    language: str,
 ) -> bool:
     """Показать диалог подтверждения очистки INBOX с полным списком папок."""
 
     dialog = tk.Toplevel(parent)
-    dialog.title("Очистка INBOX")
+    dialog.title(translate(language, "clean_inbox"))
     dialog.transient(parent)
     dialog.minsize(520, 320)
     dialog.grab_set()
@@ -251,7 +255,9 @@ def _confirm_cleanup_dialog(
 
     header = ttk.Label(
         frame,
-        text=f"Удалить {len(candidates)} папок из {inbox_path}?",
+        text=translate(
+            language, "delete_folders_prompt", count=len(candidates), path=inbox_path
+        ),
         anchor="w",
         justify=tk.LEFT,
         wraplength=480,
@@ -298,13 +304,13 @@ def _confirm_cleanup_dialog(
     button_frame.pack(fill=tk.X)
     ttk.Button(
         button_frame,
-        text="Удалить",
+        text=translate(language, "delete"),
         command=on_confirm,
         style="Danger.TButton",
     ).pack(side=tk.RIGHT, padx=(8, 0))
     ttk.Button(
         button_frame,
-        text="Отмена",
+        text=translate(language, "cancel"),
         command=on_cancel,
         style="Secondary.TButton",
     ).pack(side=tk.RIGHT)
@@ -340,22 +346,25 @@ def _load_entries(base_dir: Path, run_id: str) -> list[TransferLogEntry]:
 
 
 def _update_summary(
-    summary_var: tk.StringVar, entries: Iterable[TransferLogEntry]
+    summary_var: tk.StringVar,
+    entries: Iterable[TransferLogEntry],
+    language: str,
 ) -> None:
     """Обновить текст сводки."""
 
     summary = summarize_entries(entries)
-    summary_var.set(
-        "Всего: {total} | Успехов: {success} | Ошибок: {errors}".format(**summary)
-    )
+    summary_var.set(translate(language, "summary", **summary))
 
 
-def _open_path(path: Path) -> None:
+def _open_path(path: Path, language: str) -> None:
     """Открыть папку или файл в системном проводнике."""
 
     target_path = path if path.exists() else path.parent
     if not target_path.exists():
-        messagebox.showerror("Ошибка", f"Путь не найден: {path}")
+        messagebox.showerror(
+            translate(language, "error"),
+            translate(language, "path_not_found", path=path),
+        )
         return
 
     try:
@@ -366,7 +375,10 @@ def _open_path(path: Path) -> None:
         else:
             subprocess.run(["xdg-open", str(target_path)], check=False)
     except OSError as exc:  # pragma: no cover
-        messagebox.showerror("Ошибка", f"Не удалось открыть {target_path}: {exc}")
+        messagebox.showerror(
+            translate(language, "error"),
+            translate(language, "open_failed", path=target_path, error=exc),
+        )
 
 
 def launch(base_dir: Path | None = None) -> None:
@@ -390,21 +402,40 @@ def launch(base_dir: Path | None = None) -> None:
         )
     root_dir.mkdir(parents=True, exist_ok=True)
     result_queue: queue.Queue[tuple[int, str, str]] = queue.Queue()
+    saved_paths = load_ui_paths()
+    language = normalize_language(saved_paths.get("TOIR_UI_LANGUAGE"))
+    restart_requested = False
+
+    def tr(key: str, **values: object) -> str:
+        return translate(language, key, **values)
 
     root = tk.Tk()
     _configure_theme(root)
     is_running = tk.BooleanVar(value=False, master=root)
-    root.title("ТОиР: распределение и журналы")
+    root.title(tr("window_title"))
     root.geometry("1200x700")
 
+    language_frame = ttk.Frame(root, padding=(12, 8, 12, 0))
+    language_frame.pack(fill=tk.X)
+    ttk.Label(language_frame, text=tr("language")).pack(side=tk.RIGHT, padx=(0, 6))
+    language_var = tk.StringVar(value=LANGUAGE_NAMES[language])
+    language_combo = ttk.Combobox(
+        language_frame,
+        textvariable=language_var,
+        values=tuple(LANGUAGE_NAMES.values()),
+        state="readonly",
+        width=10,
+    )
+    language_combo.pack(side=tk.RIGHT)
+
     notebook = ttk.Notebook(root, style="TNotebook")
-    notebook.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+    notebook.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 12))
 
     # --- Вкладка "Распределение" ---
     control_tab = ttk.Frame(notebook, padding=12, style="TFrame")
-    notebook.add(control_tab, text="Распределение")
+    notebook.add(control_tab, text=tr("distribution"))
 
-    ttk.Label(control_tab, text="Каталог входных данных").grid(
+    ttk.Label(control_tab, text=tr("input_directory")).grid(
         row=0, column=0, sticky=tk.W
     )
     inbox_var = tk.StringVar(value=str(DEFAULT_INBOX))
@@ -414,7 +445,6 @@ def launch(base_dir: Path | None = None) -> None:
     dest_vars: dict[str, tk.StringVar] = {"TOIR_INBOX_DIR": inbox_var}
     dest_flag_vars: dict[str, tk.BooleanVar] = {}
 
-    saved_paths = load_ui_paths()
     saved_inbox = saved_paths.get("TOIR_INBOX_DIR") if saved_paths else None
     if saved_inbox:
         inbox_var.set(saved_inbox)
@@ -438,6 +468,7 @@ def launch(base_dir: Path | None = None) -> None:
         if part_value not in PART_FILTER_CHOICES:
             part_value = pipeline.PART_FILTER_DEFAULT
         snapshot["TOIR_PART_FILTER"] = part_value
+        snapshot["TOIR_UI_LANGUAGE"] = language
         return snapshot
 
     def persist_paths() -> None:
@@ -446,7 +477,19 @@ def launch(base_dir: Path | None = None) -> None:
         try:
             save_ui_paths(paths_snapshot)
         except OSError as exc:
-            append_log(f"[settings] Ошибка сохранения путей: {exc}\n", tag="stderr")
+            append_log(tr("settings_save_failed", error=exc), tag="stderr")
+
+    def change_language(_event: tk.Event) -> None:
+        nonlocal language, restart_requested
+        selected_language = normalize_language(language_var.get())
+        if selected_language == language:
+            return
+        language = selected_language
+        persist_paths()
+        restart_requested = True
+        root.destroy()
+
+    language_combo.bind("<<ComboboxSelected>>", change_language)
 
     def select_directory(target_var: tk.StringVar, fallback: Path) -> None:
         """Выбрать каталог через диалог и обновить поле."""
@@ -461,9 +504,9 @@ def launch(base_dir: Path | None = None) -> None:
 
         raw_value = target_var.get().strip()
         if not raw_value:
-            messagebox.showinfo("Папка не задана", "Сначала укажите путь.")
+            messagebox.showinfo(tr("directory_not_set"), tr("specify_path_first"))
             return
-        _open_path(Path(raw_value).expanduser())
+        _open_path(Path(raw_value).expanduser(), language)
 
     def make_select_callback(
         target_var: tk.StringVar, default_path: Path
@@ -486,14 +529,14 @@ def launch(base_dir: Path | None = None) -> None:
     def choose_inbox() -> None:
         select_directory(inbox_var, DEFAULT_INBOX)
 
-    ttk.Button(control_tab, text="Выбрать...", command=choose_inbox).grid(
+    ttk.Button(control_tab, text=tr("browse"), command=choose_inbox).grid(
         row=1, column=1, padx=(8, 0)
     )
     ttk.Button(
-        control_tab, text="Открыть", command=lambda: open_directory(inbox_var)
+        control_tab, text=tr("open"), command=lambda: open_directory(inbox_var)
     ).grid(row=1, column=2, padx=(8, 0))
 
-    ttk.Label(control_tab, text="Фильтр по части").grid(
+    ttk.Label(control_tab, text=tr("part_filter")).grid(
         row=2, column=0, sticky=tk.W, pady=(8, 2)
     )
     part_filter_group = ttk.Frame(control_tab)
@@ -507,7 +550,7 @@ def launch(base_dir: Path | None = None) -> None:
             command=persist_paths,
         ).grid(row=0, column=idx, padx=(0 if idx == 0 else 12, 0))
 
-    ttk.Label(control_tab, text="Назначения").grid(
+    ttk.Label(control_tab, text=tr("destinations")).grid(
         row=4, column=0, sticky=tk.W, pady=(10, 2)
     )
 
@@ -543,7 +586,7 @@ def launch(base_dir: Path | None = None) -> None:
         )
         ttk.Button(
             row,
-            text="Выбрать...",
+            text=tr("browse"),
             command=make_select_callback(var, default_path),
         ).pack(
             side=tk.LEFT,
@@ -551,7 +594,7 @@ def launch(base_dir: Path | None = None) -> None:
         )
         ttk.Button(
             row,
-            text="Открыть",
+            text=tr("open"),
             command=make_open_callback(var),
         ).pack(
             side=tk.LEFT,
@@ -559,7 +602,7 @@ def launch(base_dir: Path | None = None) -> None:
         )
         if enabled_var is not None:
             enabled_var.trace_add("write", lambda *_args: persist_paths())
-    status_var = tk.StringVar(value="Готово")
+    status_var = tk.StringVar(value=tr("ready"))
     status_label = ttk.Label(
         control_tab,
         textvariable=status_var,
@@ -613,26 +656,24 @@ def launch(base_dir: Path | None = None) -> None:
 
     def cleanup_processed_projects() -> None:
         if is_running.get():
-            messagebox.showinfo(
-                "Очистка INBOX", "Дождитесь завершения текущего запуска."
-            )
+            messagebox.showinfo(tr("clean_inbox"), tr("wait_current_run"))
             return
         inbox_path = Path(inbox_var.get()).expanduser()
         if not inbox_path.exists():
-            messagebox.showerror("Очистка INBOX", f"Папка не найдена: {inbox_path}")
+            messagebox.showerror(
+                tr("clean_inbox"), tr("directory_not_found", path=inbox_path)
+            )
             return
         runs = list_runs(base_dir=root_dir)
         if not runs:
-            messagebox.showinfo("Очистка INBOX", "Журналы не найдены.")
+            messagebox.showinfo(tr("clean_inbox"), tr("no_logs"))
             return
         entries = _load_entries(root_dir, runs[0].run_id)
         candidates = _collect_processed_projects(entries, inbox_path)
         if not candidates:
-            messagebox.showinfo(
-                "Очистка INBOX", "Нет завершённых проектов для удаления."
-            )
+            messagebox.showinfo(tr("clean_inbox"), tr("no_completed_projects"))
             return
-        if not _confirm_cleanup_dialog(root, inbox_path, candidates):
+        if not _confirm_cleanup_dialog(root, inbox_path, candidates, language):
             return
         failures: list[tuple[Path, Exception]] = []
         removed = 0
@@ -640,23 +681,23 @@ def launch(base_dir: Path | None = None) -> None:
             try:
                 shutil.rmtree(directory)
                 removed += 1
-                append_log(f"[cleanup] Удалена папка {directory}\n", tag="stdout")
+                append_log(tr("cleanup_deleted", path=directory), tag="stdout")
             except OSError as exc:
                 failures.append((directory, exc))
                 append_log(
-                    f"[cleanup] Ошибка удаления {directory}: {exc}\n", tag="stderr"
+                    tr("cleanup_failed", path=directory, error=exc), tag="stderr"
                 )
         if failures:
-            message = "Не удалось удалить:\n" + "\n".join(
+            message = tr("could_not_delete") + "\n".join(
                 f"• {path.name}: {exc}" for path, exc in failures
             )
-            messagebox.showerror("Очистка INBOX", message)
+            messagebox.showerror(tr("clean_inbox"), message)
         if removed:
-            messagebox.showinfo("Очистка INBOX", f"Удалено папок: {removed}")
+            messagebox.showinfo(tr("clean_inbox"), tr("folders_deleted", count=removed))
 
     cleanup_button = ttk.Button(
         button_frame,
-        text="Удалить обработанные",
+        text=tr("delete_processed"),
         command=cleanup_processed_projects,
         style="Danger.TButton",
     )
@@ -679,6 +720,7 @@ def launch(base_dir: Path | None = None) -> None:
             errors="replace",
             cwd=str(REPO_ROOT),
             env=env,
+            check=False,
         )
         result_queue.put((process.returncode, process.stdout, process.stderr))
 
@@ -705,29 +747,28 @@ def launch(base_dir: Path | None = None) -> None:
                 elif "[Инфо]" in line and "Создаём каталог" in line:
                     infos.append(line)
             if errors:
-                status_var.set("Завершено с ошибками")
+                status_var.set(tr("completed_errors"))
                 payload = "\n".join(errors[:5])
-                messagebox.showerror("Распределение", payload)
+                messagebox.showerror(tr("distribution"), payload)
             elif warnings:
-                status_var.set("Завершено с предупреждениями")
+                status_var.set(tr("completed_warnings"))
                 summary_lines = warnings + infos
                 payload = "\n".join(summary_lines[:5])
-                messagebox.showwarning("Распределение", payload)
+                messagebox.showwarning(tr("distribution"), payload)
             else:
-                status_var.set("Готово")
+                status_var.set(tr("ready"))
                 if infos:
-                    messagebox.showinfo("Распределение", "\n".join(infos[:5]))
+                    messagebox.showinfo(tr("distribution"), "\n".join(infos[:5]))
                 else:
-                    messagebox.showinfo("Распределение", "Обработка завершена успешно.")
+                    messagebox.showinfo(tr("distribution"), tr("processing_success"))
             refresh_runs()
         else:
-            status_var.set("Завершено с ошибками")
-            messagebox.showerror(
-                "Распределение", f"Скрипт завершился с кодом {returncode}."
-            )
+            status_var.set(tr("completed_errors"))
+            messagebox.showerror(tr("distribution"), tr("script_exit", code=returncode))
         run_button.config(state=tk.NORMAL)
         reset_button.config(state=tk.NORMAL)
         cleanup_button.config(state=tk.NORMAL)
+        language_combo.config(state="readonly")
         is_running.set(False)
         root.after(200, handle_queue)
 
@@ -746,7 +787,7 @@ def launch(base_dir: Path | None = None) -> None:
             needs_path = flag_env is None or enabled
             if needs_path and not raw_value:
                 label = DESTINATION_LABELS.get(env_name, env_name)
-                messagebox.showerror("Ошибка", f"Укажите путь для {label}.")
+                messagebox.showerror(tr("error"), tr("specify_path", label=label))
                 return
             if raw_value:
                 resolved = Path(raw_value).expanduser()
@@ -755,7 +796,9 @@ def launch(base_dir: Path | None = None) -> None:
                 dest_vars[env_name].set(resolved_str)
         inbox_path = Path(overrides["TOIR_INBOX_DIR"])
         if not inbox_path.exists():
-            messagebox.showerror("Ошибка", f"Папка не найдена: {inbox_path}")
+            messagebox.showerror(
+                tr("error"), tr("directory_not_found", path=inbox_path)
+            )
             return
         part_selection = (
             part_filter_var.get().strip().upper() or pipeline.PART_FILTER_DEFAULT
@@ -765,11 +808,12 @@ def launch(base_dir: Path | None = None) -> None:
         overrides["TOIR_PART_FILTER"] = part_selection
         persist_paths()
         clear_log()
-        status_var.set("Выполняется...")
-        append_log(f"Запуск распределения для {inbox_path}\n\n")
+        status_var.set(tr("running"))
+        append_log(tr("starting_distribution", path=inbox_path))
         run_button.config(state=tk.DISABLED)
         reset_button.config(state=tk.DISABLED)
         cleanup_button.config(state=tk.DISABLED)
+        language_combo.config(state=tk.DISABLED)
         is_running.set(True)
         thread = threading.Thread(
             target=distribution_worker, args=(overrides,), daemon=True
@@ -779,8 +823,8 @@ def launch(base_dir: Path | None = None) -> None:
     def reset_paths_to_defaults() -> None:
         if is_running.get():
             messagebox.showinfo(
-                "Сброс путей",
-                "Дождитесь завершения обработки перед сбросом настроек.",
+                tr("reset_paths"),
+                tr("wait_before_reset"),
             )
             return
         for _, env_name, default_path, flag_env, default_enabled in DESTINATION_CONFIG:
@@ -789,13 +833,13 @@ def launch(base_dir: Path | None = None) -> None:
                 default_flag = DESTINATION_FLAG_DEFAULTS.get(flag_env, default_enabled)
                 dest_flag_vars[flag_env].set(default_flag)
         part_filter_var.set(pipeline.PART_FILTER_DEFAULT)
-        status_var.set("Пути сброшены на значения по умолчанию")
-        append_log("Сброс путей на значения по умолчанию\n", tag="status")
+        status_var.set(tr("paths_reset"))
+        append_log(tr("paths_reset_log"), tag="status")
         persist_paths()
 
     run_button = ttk.Button(
         button_frame,
-        text="Распределить",
+        text=tr("distribution"),
         command=start_distribution,
         style="Primary.TButton",
     )
@@ -803,24 +847,24 @@ def launch(base_dir: Path | None = None) -> None:
 
     reset_button = ttk.Button(
         button_frame,
-        text="Сбросить пути",
+        text=tr("reset_paths"),
         command=reset_paths_to_defaults,
         style="Secondary.TButton",
     )
     reset_button.pack(side=tk.RIGHT, padx=(4, 0))
 
-    ttk.Button(button_frame, text="Очистить лог", command=clear_log).pack(
+    ttk.Button(button_frame, text=tr("clear_log"), command=clear_log).pack(
         side=tk.RIGHT, padx=(4, 0)
     )
 
     # --- Вкладка "Журналы" ---
     logs_tab = ttk.Frame(notebook, padding=12, style="TFrame")
-    notebook.add(logs_tab, text="Журналы")
+    notebook.add(logs_tab, text=tr("logs"))
 
     list_frame = ttk.Frame(logs_tab, style="Card.TFrame", padding=(8, 8))
     list_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
 
-    ttk.Label(list_frame, text="Запуски", style="Card.TLabel").pack(anchor=tk.W)
+    ttk.Label(list_frame, text=tr("runs"), style="Card.TLabel").pack(anchor=tk.W)
     run_listbox = tk.Listbox(
         list_frame,
         height=13,
@@ -836,10 +880,10 @@ def launch(base_dir: Path | None = None) -> None:
     )
     run_listbox.pack(fill=tk.BOTH, expand=True)
 
-    refresh_button = ttk.Button(list_frame, text="Обновить")
+    refresh_button = ttk.Button(list_frame, text=tr("refresh"))
     refresh_button.pack(fill=tk.X, pady=(6, 0))
 
-    summary_var = tk.StringVar(value="Журналы не найдены")
+    summary_var = tk.StringVar(value=tr("no_logs"))
     ttk.Label(list_frame, textvariable=summary_var, style="Secondary.TLabel").pack(
         anchor=tk.W, pady=(6, 0)
     )
@@ -857,12 +901,12 @@ def launch(base_dir: Path | None = None) -> None:
     tree.grid(row=0, column=0, sticky="nsew")
 
     headings = {
-        "time": "Время",
-        "action": "Действие",
-        "status": "Статус",
-        "source": "Источник",
-        "target": "Назначение",
-        "message": "Комментарий",
+        "time": tr("time"),
+        "action": tr("action"),
+        "status": tr("status"),
+        "source": tr("source"),
+        "target": tr("target"),
+        "message": tr("message"),
     }
     widths = {
         "time": 80,
@@ -900,7 +944,7 @@ def launch(base_dir: Path | None = None) -> None:
         tree.delete(*tree.get_children())
         for idx, entry in enumerate(current_entries):
             tree.insert("", tk.END, iid=str(idx), values=_format_row(entry))
-        _update_summary(summary_var, current_entries)
+        _update_summary(summary_var, current_entries, language)
 
     def on_run_select(_event: tk.Event) -> None:
         selection = run_listbox.curselection()
@@ -919,13 +963,13 @@ def launch(base_dir: Path | None = None) -> None:
             load_entries(run_ids[0])
         else:
             tree.delete(*tree.get_children())
-            summary_var.set("Журналы не найдены")
+            summary_var.set(tr("no_logs"))
 
     refresh_button.config(command=refresh_runs)
 
     delete_button = ttk.Button(
         list_frame,
-        text="Удалить все кроме последнего",
+        text=tr("delete_old_logs"),
         style="Danger.TButton",
     )
     delete_button.pack(fill=tk.X, pady=(4, 0))
@@ -933,11 +977,12 @@ def launch(base_dir: Path | None = None) -> None:
     def delete_old_runs() -> None:
         runs = list_runs(base_dir=root_dir)
         if len(runs) <= 1:
-            messagebox.showinfo("Журналы", "Нечего удалять.")
+            messagebox.showinfo(tr("logs"), tr("nothing_to_delete"))
             return
         latest = runs[0]
         proceed = messagebox.askyesno(
-            "Журналы", f"Удалить {len(runs) - 1} файлов, кроме {latest.run_id}?"
+            tr("logs"),
+            tr("delete_logs_prompt", count=len(runs) - 1, run_id=latest.run_id),
         )
         if not proceed:
             return
@@ -946,36 +991,38 @@ def launch(base_dir: Path | None = None) -> None:
                 run.file_path.unlink(missing_ok=True)  # type: ignore[arg-type]
             except OSError as exc:
                 messagebox.showerror(
-                    "Ошибка", f"Не удалось удалить {run.file_path}: {exc}"
+                    tr("error"), tr("delete_log_failed", path=run.file_path, error=exc)
                 )
                 return
-        messagebox.showinfo("Журналы", "Удаление выполнено.")
+        messagebox.showinfo(tr("logs"), tr("deletion_completed"))
         refresh_runs()
 
     delete_button.config(command=delete_old_runs)
 
     def open_selected_entry() -> None:
         if not current_entries:
-            messagebox.showinfo("Подсказка", "Записи не найдены")
+            messagebox.showinfo(tr("information"), tr("no_entries"))
             return
         selection = tree.selection()
         if not selection:
-            messagebox.showinfo("Подсказка", "Выберите строку в таблице")
+            messagebox.showinfo(tr("information"), tr("select_row"))
             return
         index = int(selection[0])
         if index >= len(current_entries):
             return
         target_path = current_entries[index].target_path
         if target_path is None:
-            messagebox.showinfo("Подсказка", "Для записи нет целевого пути")
+            messagebox.showinfo(tr("information"), tr("no_target_path"))
             return
-        _open_path(target_path.parent if target_path.is_file() else target_path)
+        _open_path(
+            target_path.parent if target_path.is_file() else target_path, language
+        )
 
     def open_all_targets() -> None:
         """Открыть все каталоги, найденные в текущем запуске."""
 
         if not current_entries:
-            messagebox.showinfo("Просмотр", "Нет записей для просмотра")
+            messagebox.showinfo(tr("view"), tr("no_entries_to_view"))
             return
         unique_paths: list[Path] = []
         seen: set[str] = set()
@@ -999,20 +1046,19 @@ def launch(base_dir: Path | None = None) -> None:
                 missing.append(target_dir)
         if missing:
             messagebox.showwarning(
-                "Просмотр",
-                "Не удалось открыть следующие пути:\n"
-                + "\n".join(str(item) for item in missing),
+                tr("view"),
+                tr("paths_open_failed") + "\n".join(str(item) for item in missing),
             )
         if not unique_paths:
             if not missing:
-                messagebox.showinfo("Просмотр", "Не найдено целевых каталогов")
+                messagebox.showinfo(tr("view"), tr("no_target_directories"))
             return
         for path in unique_paths:
-            _open_path(path)
+            _open_path(path, language)
 
-    ttk.Button(tree_toolbar, text="Открыть все папки", command=open_all_targets).pack(
-        side=tk.LEFT
-    )
+    ttk.Button(
+        tree_toolbar, text=tr("open_all_folders"), command=open_all_targets
+    ).pack(side=tk.LEFT)
 
     tree.bind("<Double-1>", lambda _event: open_selected_entry())
     run_listbox.bind("<<ListboxSelect>>", on_run_select)
@@ -1023,10 +1069,8 @@ def launch(base_dir: Path | None = None) -> None:
     def on_close() -> None:
         try:
             persist_paths()
-        except Exception as exc:
-            append_log(
-                f"[settings] Ошибка при сохранении перед выходом: {exc}\n", tag="stderr"
-            )
+        except OSError as exc:
+            append_log(tr("settings_exit_failed", error=exc), tag="stderr")
         finally:
             root.destroy()
 
@@ -1039,6 +1083,9 @@ def launch(base_dir: Path | None = None) -> None:
             root.destroy()
         except tk.TclError:
             pass
+
+    if restart_requested:
+        launch(base_dir=root_dir)
 
 
 if __name__ == "__main__":

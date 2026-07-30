@@ -8,5 +8,6 @@
   "TOIR_NOTES_DIR": "D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\03_Notes",
   "TOIR_PART_FILTER": "CS/LP",
   "TOIR_TRA_GST_DIR": "D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\04_TRA_GST",
-  "TOIR_TRA_SUB_APP_DIR": "D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\05_TRA_SUB_app"
+  "TOIR_TRA_SUB_APP_DIR": "D:\\Code_and_Scripts_local\\_TEST_for\\toir_raspredelenije_test2_cel\\05_TRA_SUB_app",
+  "TOIR_UI_LANGUAGE": "en"
 }
