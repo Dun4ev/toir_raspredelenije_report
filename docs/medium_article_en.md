@@ -1,0 +1,51 @@
+# How We Tamed `_All.pdf` and Saved Hours of Busywork
+
+## Folder Chaos: A Pain Everyone Knows
+
+When a company lacks proper document-flow tooling, everything degenerates into endless folder creation and manual copy-paste at the worst possible time.
+
+Every fresh report landed in the `Inbox` folder, and then the juggling act began: review the report, attachments, and signatures, rename the file, append the `_All.pdf` suffix to every fully assembled PDF, copy those files into `03_Notes`, `04_TRA_GST`, `05_TRA_SUB_app`, build `Year/Month/<Part>/pdf`, and then `Native`. At the final step we had to create an archive, move it into `Native`, and keep the original project plus the newly duplicated copies—storage ballooned instantly. Even with Total Commander on two monitors, distributing 59 reports took 25 minutes of focus.
+
+## Toir Raspredelenije: An Automated Conveyor Instead of Manual Handling
+
+After mapping the pain points we built Toir Raspredelenije to fight the chaos. The `toir_raspredelenije.py` script recursively scans `INBOX_DIR`, finds the single `_All.pdf` inside every project folder, and runs the full conveyor: copies the file to the destinations where teammates expect it, builds a zip inside `Native`, and logs every action through `DispatchLogger`. Environment variables `TOIR_*` let you override any path, which is handy for sandbox tests or PyInstaller builds.
+
+### Key Advantages
+
+- **Strict discipline for inputs.** If a PDF sits directly in `INBOX_DIR`, nothing starts and the operator gets a clear warning.
+- **Error-free distribution.** The file automatically goes to `NOTES_DIR`, the weekly `TRA_GST` subfolders, all `TRA_SUB_app` locations, and the final `pdf`/`Native` trees where missing folders for LP and CS are created from reference tables.
+- **Precise event trail.** `DispatchLogger` writes JSONL logs with statuses, paths, and metadata. These logs drive the Tkinter UI and CLI reports.
+- **Flexible environment overrides.** Any path can be redefined, and automatic transliteration removes Cyrillic from names.
+
+## Real-World Rollouts
+
+### 1. Team Without Folder Hygiene
+
+During the pilot run every report lived in a single heap. The first pass highlighted offenders, sorted projects into distinct folders, copied PDFs into `03_Notes`, `04_TRA_GST`, `05_TRA_SUB_app`, and produced archives for `Native`. The run log made it obvious where each report ended up; operators only needed to confirm the signatures.
+
+### 2. Deep Nesting and LP/CS Separation
+
+When a CS batch arrived with several levels of nesting, the conveyor walked the entire `00_Inbox`, found `_All.pdf` deep inside, and produced the right structure. LP uses name normalization such as `BVS05` → `BVS5`, while CS relies on the `CS_FOLDER_OVERRIDES` lookup and auto-creates `pdf`/`Native` when they are missing.
+
+## What Is Inside (Without Excessive Jargon)
+
+- **Name parsing.** The script extracts the part (`LP` or `CS`), object, period, date, revision, and uses that data to derive paths.
+- **Reference data and Excel.** The TRA_SUB specifics rely on `Template/TZ_glob.xlsx`: the script grabs the assignment index and period code to store the file exactly where downstream teams expect it.
+- **Safe path handling.** Before copying we test for directory presence, create missing folders, and log whether they were generated automatically.
+- **Clean zips.** The temporary archive lives in `logs/temp`; once moved to `Native` it gets deleted so disks stay lean.
+- **UI plus headless mode.** Dispatchers work in a Tkinter app with “Distribution” and “Logs” tabs. On servers we run `--run-pipeline` or set `APP_HEADLESS=1` to execute the same logic without a GUI.
+
+## Field-Tested Tips
+
+1. **Keep environment variables under control.** Set `TOIR_INBOX_DIR`, `TOIR_NOTES_DIR`, and friends before every run to test a sandbox and prod scenario in parallel.
+2. **Do not skimp on logs.** JSONL files are easy to process via CLI (`python -m toir_manager report --base-dir logs/dispatch --json`) or to feed into your own dashboards.
+3. **Transliteration is your ally.** If a project comes with Cyrillic names, the system renames both the folder and the `_All.pdf`. When collisions arise you get a readable error and the rest continue processing.
+4. **UI automation through CLI.** The `--run-pipeline` option executes the same code as the operators use, so we validate business logic without repetitive manual UI tests.
+
+## How It Helped Us
+
+Toir Raspredelenije frees the engineering team from the dullest part of the job: shuffling reports between folders. Instead of 25 minutes for 59 files we click once and instantly get transparent logs, distributed copies, and ready-to-ship archives. The program runs equally well from sources and as a PyInstaller binary, supports flexible configuration, and ships with a UI for operators. When document flow spiked and we needed order without rolling out a heavyweight ECM, this project gave us a lightweight automation on-ramp.
+
+## What Comes Next
+
+The backlog includes revamped logging for multiple `_All.pdf` files, archive improvements, and automatic `INBOX` cleanup after successful runs. We are also debating storage strategy—single archive per project or per report—and plan to add processing-time analytics to expose saved effort right in the UI.
